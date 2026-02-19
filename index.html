@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>2B Yarış Oyunu</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #151515;
+        color: #f3f3f3;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      header {
+        padding: 0.8rem 1rem;
+        background: #202020;
+        border-bottom: 1px solid #333;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: space-between;
+      }
+      #hud {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .pill {
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        font-size: 0.9rem;
+      }
+      #game-wrap {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+      }
+      canvas {
+        border: 2px solid #3a3a3a;
+        border-radius: 8px;
+        background: #0f0f0f;
+        max-width: 100%;
+        height: auto;
+      }
+      #controls {
+        padding: 0.8rem 1rem;
+        border-top: 1px solid #333;
+        background: #202020;
+        font-size: 0.95rem;
+      }
+      #message {
+        font-weight: 700;
+        color: #ffd166;
+      }
+      button {
+        border: 1px solid #555;
+        background: #2f2f2f;
+        color: white;
+        border-radius: 8px;
+        padding: 0.4rem 0.8rem;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #414141;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div id="hud">
+        <div class="pill">Seviye: <span id="level">1</span></div>
+        <div class="pill">Araba: <span id="car">1 / 10</span></div>
+        <div class="pill">Süre: <span id="time">90.0</span>s</div>
+        <div class="pill">Kalan Mesafe: <span id="distance">5400</span> m</div>
+      </div>
+      <div>
+        <button id="restart">Yeniden Başlat</button>
+      </div>
+    </header>
+
+    <main id="game-wrap">
+      <canvas id="game" width="900" height="540"></canvas>
+    </main>
+
+    <section id="controls">
+      Kontroller: <b>W / ↑</b> hızlan, <b>S / ↓</b> fren, <b>A,D / ←,→</b> direksiyon.
+      <span id="message">Yarış başlıyor!</span>
+    </section>
+
+    <script>
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+
+      const levelEl = document.getElementById("level");
+      const carEl = document.getElementById("car");
+      const timeEl = document.getElementById("time");
+      const distanceEl = document.getElementById("distance");
+      const messageEl = document.getElementById("message");
+      const restartBtn = document.getElementById("restart");
+
+      const keys = new Set();
+      const laneCount = 3;
+      const laneWidth = canvas.width / laneCount;
+      const mapDurationSec = 90;
+      const trackLengthMeters = 5400;
+      const totalCars = 10;
+      const maxLevels = 10;
+
+      const state = {
+        currentCar: 1,
+        level: 1,
+        timeLeft: mapDurationSec,
+        distanceLeft: trackLengthMeters,
+        running: true,
+        finished: false,
+        win: false,
+      };
+
+      const player = {
+        lane: 1,
+        x: laneWidth * 1 + laneWidth / 2,
+        y: canvas.height - 90,
+        width: 40,
+        height: 70,
+        speed: 0,
+        maxSpeed: 320,
+        acceleration: 220,
+        brakePower: 280,
+        steerSpeed: 400,
+      };
+
+      const aiCars = [];
+
+      function laneCenter(lane) {
+        return lane * laneWidth + laneWidth / 2;
+      }
+
+      function spawnTraffic() {
+        aiCars.length = 0;
+        const trafficCount = 7 + state.level;
+        for (let i = 0; i < trafficCount; i++) {
+          aiCars.push({
+            lane: Math.floor(Math.random() * laneCount),
+            y: -Math.random() * canvas.height * 2,
+            width: 38,
+            height: 68,
+            speed: 130 + Math.random() * 140 + state.level * 8,
+            color: `hsl(${Math.random() * 360}, 70%, 55%)`,
+          });
+        }
+      }
+
+      function resetRun() {
+        state.level = 1;
+        state.currentCar = 1;
+        state.timeLeft = mapDurationSec;
+        state.distanceLeft = trackLengthMeters;
+        state.running = true;
+        state.finished = false;
+        state.win = false;
+        messageEl.textContent = "Yarış başlıyor!";
+
+        player.lane = 1;
+        player.x = laneCenter(player.lane);
+        player.speed = 0;
+        player.maxSpeed = 300;
+        player.acceleration = 220;
+
+        spawnTraffic();
+        updateHud();
+      }
+
+      function nextLevel() {
+        if (state.level >= maxLevels) {
+          state.finished = true;
+          state.running = false;
+          state.win = true;
+          messageEl.textContent = "Tüm seviyeler tamamlandı! Şampiyonsun 🏁";
+          return;
+        }
+
+        state.level += 1;
+        state.currentCar = state.level;
+        state.timeLeft = mapDurationSec;
+        state.distanceLeft = trackLengthMeters;
+
+        player.maxSpeed = 300 + state.level * 10;
+        player.acceleration = 220 + state.level * 4;
+        player.speed = 0;
+        player.lane = 1;
+        player.x = laneCenter(player.lane);
+
+        spawnTraffic();
+        messageEl.textContent = `Seviye ${state.level}! Araba ${state.currentCar} ile devam.`;
+      }
+
+      function gameOver(text) {
+        state.running = false;
+        state.finished = true;
+        state.win = false;
+        messageEl.textContent = text;
+      }
+
+      function handleInput(dt) {
+        if (keys.has("ArrowUp") || keys.has("w")) {
+          player.speed += player.acceleration * dt;
+        }
+        if (keys.has("ArrowDown") || keys.has("s")) {
+          player.speed -= player.brakePower * dt;
+        }
+
+        if (keys.has("ArrowLeft") || keys.has("a")) {
+          player.x -= player.steerSpeed * dt;
+        }
+        if (keys.has("ArrowRight") || keys.has("d")) {
+          player.x += player.steerSpeed * dt;
+        }
+
+        player.speed *= 0.992;
+        player.speed = Math.max(0, Math.min(player.maxSpeed, player.speed));
+
+        const minX = laneWidth * 0 + 18;
+        const maxX = laneWidth * laneCount - 18;
+        player.x = Math.max(minX, Math.min(maxX, player.x));
+      }
+
+      function updateTraffic(dt) {
+        for (const car of aiCars) {
+          car.y += (player.speed - car.speed) * dt;
+          if (car.y > canvas.height + 120) {
+            car.y = -120 - Math.random() * 300;
+            car.lane = Math.floor(Math.random() * laneCount);
+            car.speed = 120 + Math.random() * 160 + state.level * 10;
+          }
+        }
+      }
+
+      function collides(a, b) {
+        return (
+          Math.abs(a.x - b.x) * 2 < a.width + b.width &&
+          Math.abs(a.y - b.y) * 2 < a.height + b.height
+        );
+      }
+
+      function checkCollisions() {
+        const playerBox = { x: player.x, y: player.y, width: player.width, height: player.height };
+        for (const car of aiCars) {
+          const aiBox = {
+            x: laneCenter(car.lane),
+            y: car.y,
+            width: car.width,
+            height: car.height,
+          };
+          if (collides(playerBox, aiBox)) {
+            gameOver(`Çarpıştın! Seviye ${state.level} başarısız oldu.`);
+            return;
+          }
+        }
+      }
+
+      function updateGame(dt) {
+        if (!state.running) return;
+
+        handleInput(dt);
+        updateTraffic(dt);
+        checkCollisions();
+
+        state.timeLeft -= dt;
+        const metersPerSecond = (player.speed / player.maxSpeed) * (trackLengthMeters / mapDurationSec);
+        state.distanceLeft -= Math.max(0, metersPerSecond * dt);
+
+        if (state.timeLeft <= 0 && state.distanceLeft > 0) {
+          gameOver("Süre doldu! Haritayı 1.5 dakikada bitiremedin.");
+        } else if (state.distanceLeft <= 0) {
+          nextLevel();
+        }
+
+        updateHud();
+      }
+
+      function drawRoad() {
+        ctx.fillStyle = "#2a2a2a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#14532d";
+        ctx.fillRect(0, 0, 50, canvas.height);
+        ctx.fillRect(canvas.width - 50, 0, 50, canvas.height);
+
+        ctx.strokeStyle = "#bdbdbd";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([30, 20]);
+        for (let i = 1; i < laneCount; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * laneWidth, 0);
+          ctx.lineTo(i * laneWidth, canvas.height);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      function drawCar(x, y, width, height, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x - width / 2, y - height / 2, width, height);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(x - width / 2 + 5, y - height / 2 + 8, width - 10, 18);
+      }
+
+      function render() {
+        drawRoad();
+
+        for (const car of aiCars) {
+          drawCar(laneCenter(car.lane), car.y, car.width, car.height, car.color);
+        }
+
+        drawCar(player.x, player.y, player.width, player.height, "#ef4444");
+
+        if (!state.running) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 42px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(state.win ? "KAZANDIN" : "OYUN BİTTİ", canvas.width / 2, canvas.height / 2);
+          ctx.font = "20px Arial";
+          ctx.fillText("Tekrar denemek için 'Yeniden Başlat'", canvas.width / 2, canvas.height / 2 + 40);
+        }
+      }
+
+      function updateHud() {
+        levelEl.textContent = state.level;
+        carEl.textContent = `${state.currentCar} / ${totalCars}`;
+        timeEl.textContent = Math.max(0, state.timeLeft).toFixed(1);
+        distanceEl.textContent = Math.max(0, Math.ceil(state.distanceLeft));
+      }
+
+      let lastTime = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        updateGame(dt);
+        render();
+
+        requestAnimationFrame(loop);
+      }
+
+      window.addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
+      window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+      restartBtn.addEventListener("click", resetRun);
+
+      resetRun();
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
