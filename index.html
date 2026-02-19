@@ -83,6 +83,7 @@
         <div class="pill">Sıra: <span id="position">1 / 3</span></div>
         <div class="pill">Süre: <span id="time">90.0</span>s</div>
         <div class="pill">Kalan Mesafe: <span id="distance">5400</span> m</div>
+        <div class="pill">Hız: <span id="speed">0</span> km/s</div>
       </div>
       <div>
         <button id="restart">Yeniden Başlat</button>
@@ -107,6 +108,7 @@
       const positionEl = document.getElementById("position");
       const timeEl = document.getElementById("time");
       const distanceEl = document.getElementById("distance");
+      const speedEl = document.getElementById("speed");
       const messageEl = document.getElementById("message");
       const restartBtn = document.getElementById("restart");
 
@@ -132,13 +134,12 @@
       };
 
       const player = {
-        lane: 1,
-        x: laneWidth * 1 + laneWidth / 2,
-        y: canvas.height - 100,
-        width: 46,
-        height: 84,
+        x: laneCenter(1),
+        y: canvas.height - 95,
+        width: 48,
+        height: 88,
         speed: 0,
-        maxSpeed: 310,
+        maxSpeed: 315,
         acceleration: 220,
         brakePower: 290,
         steerSpeed: 420,
@@ -147,6 +148,7 @@
       };
 
       const rivals = [];
+      const trafficCars = [];
       const roadsideTrees = [];
 
       function laneCenter(lane) {
@@ -161,22 +163,41 @@
             lane: startLanes[i],
             x: laneCenter(startLanes[i]),
             progress: 0,
-            speed: 220 + Math.random() * 40,
-            color: `hsl(${(i * 60 + 30) % 360}, 75%, 55%)`,
+            speed: 215 + Math.random() * 35,
+            color: `hsl(${(i * 70 + 20) % 360}, 78%, 58%)`,
             width: 44,
             height: 82,
           });
         }
       }
 
+      function createTraffic() {
+        trafficCars.length = 0;
+        for (let i = 0; i < 7; i++) {
+          spawnTrafficCar(260 + i * 170);
+        }
+      }
+
+      function spawnTrafficCar(startAhead = 250) {
+        const lane = Math.floor(Math.random() * laneCount);
+        trafficCars.push({
+          lane,
+          x: laneCenter(lane),
+          progress: player.progress + startAhead + Math.random() * 500,
+          speed: 120 + Math.random() * 55,
+          width: 42,
+          height: 78,
+          color: `hsl(${Math.random() * 360}, 45%, 48%)`,
+        });
+      }
+
       function createTrees() {
         roadsideTrees.length = 0;
-        for (let i = 0; i < 24; i++) {
-          const side = i % 2 === 0 ? "left" : "right";
+        for (let i = 0; i < 36; i++) {
           roadsideTrees.push({
-            side,
-            offset: i * 130,
-            size: 20 + Math.random() * 12,
+            side: i % 2 === 0 ? "left" : "right",
+            offset: i * 95,
+            size: 18 + Math.random() * 16,
           });
         }
       }
@@ -191,15 +212,16 @@
         state.win = false;
         state.position = 1;
         state.worldOffset = 0;
-        messageEl.textContent = "Yarış başlıyor! 3 araba yan yana start aldı.";
+        messageEl.textContent = "Yarış başlıyor! Trafiğin arasından sıyrıl.";
 
         player.x = laneCenter(1);
         player.speed = 0;
-        player.maxSpeed = 310;
+        player.maxSpeed = 315;
         player.acceleration = 220;
         player.progress = 0;
 
         createRivals();
+        createTraffic();
         createTrees();
         updateHud();
       }
@@ -220,14 +242,15 @@
         state.position = 1;
         state.worldOffset = 0;
 
-        player.maxSpeed = 310 + state.level * 11;
-        player.acceleration = 220 + state.level * 4;
+        player.maxSpeed = 315 + state.level * 14;
+        player.acceleration = 220 + state.level * 5;
         player.speed = 0;
         player.x = laneCenter(1);
         player.progress = 0;
 
         createRivals();
-        messageEl.textContent = `Seviye ${state.level}! Bu arabayla yarışı kazan.`;
+        createTraffic();
+        messageEl.textContent = `Seviye ${state.level}! Trafik sıklaştı, dikkat et.`;
       }
 
       function gameOver(text) {
@@ -252,28 +275,59 @@
           player.x += player.steerSpeed * dt;
         }
 
+        const passiveBoost = 6 + state.level * 1.5;
+        player.speed += passiveBoost * dt;
         player.speed *= 0.992;
         player.speed = Math.max(0, Math.min(player.maxSpeed, player.speed));
 
-        const minX = 62;
-        const maxX = canvas.width - 62;
+        const minX = 68;
+        const maxX = canvas.width - 68;
         player.x = Math.max(minX, Math.min(maxX, player.x));
       }
 
       function updateRivals(dt) {
         for (const rival of rivals) {
-          const pace = rival.speed + state.level * 7;
+          rival.speed += (0.9 + state.level * 0.25) * dt;
+          const pace = Math.min(rival.speed, player.maxSpeed - 15) + state.level * 6;
           rival.progress += pace * dt;
 
           const targetX = laneCenter(rival.lane);
-          if (player.progress > 250 && Math.random() < 0.0015 * state.level) {
+          if (player.progress > 280 && Math.random() < 0.0016 * state.level) {
             rival.lane = Math.floor(Math.random() * laneCount);
           }
-          rival.x = rival.x ? rival.x + (targetX - rival.x) * 0.08 : targetX;
+          rival.x += (targetX - rival.x) * 0.08;
+        }
+      }
+
+      function updateTraffic(dt) {
+        const densityFactor = 1 + Math.floor(player.progress / 950);
+
+        while (trafficCars.length < 7 + densityFactor + state.level) {
+          spawnTrafficCar(500 + Math.random() * 900);
+        }
+
+        for (const traffic of trafficCars) {
+          traffic.speed += 0.3 * dt;
+          traffic.progress += traffic.speed * dt;
+
+          if (traffic.progress < player.progress - 180) {
+            traffic.progress = player.progress + 700 + Math.random() * 1200;
+            traffic.lane = Math.floor(Math.random() * laneCount);
+            traffic.x = laneCenter(traffic.lane);
+            traffic.speed = 120 + Math.random() * 70;
+          }
+
+          if (Math.random() < 0.0012 && player.progress > 500) {
+            traffic.lane = Math.floor(Math.random() * laneCount);
+          }
+
+          const targetX = laneCenter(traffic.lane);
+          traffic.x += (targetX - traffic.x) * 0.05;
         }
       }
 
       function updateRaceProgress(dt) {
+        player.maxSpeed += (1.6 + state.level * 0.2) * dt;
         player.progress += player.speed * dt;
         state.worldOffset += player.speed * dt;
 
@@ -297,18 +351,29 @@
         for (const rival of rivals) {
           const rel = rival.progress - player.progress;
           if (Math.abs(rel) > 140) continue;
-          const rivalY = player.y - rel;
-          const rivalX = rival.x ?? laneCenter(rival.lane);
-
           const rivalBox = {
-            x: rivalX,
-            y: rivalY,
+            x: rival.x,
+            y: player.y - rel,
             width: rival.width,
             height: rival.height,
           };
-
           if (collides(playerBox, rivalBox)) {
             gameOver("Rakiple çarpıştın! Tekrar dene.");
+            return;
+          }
+        }
+
+        for (const traffic of trafficCars) {
+          const rel = traffic.progress - player.progress;
+          if (Math.abs(rel) > 150) continue;
+          const trafficBox = {
+            x: traffic.x,
+            y: player.y - rel,
+            width: traffic.width,
+            height: traffic.height,
+          };
+          if (collides(playerBox, trafficBox)) {
+            gameOver("Trafikte araca çarptın! Aralardan geçmen lazım.");
             return;
           }
         }
@@ -319,6 +384,7 @@
 
         handleInput(dt);
         updateRivals(dt);
+        updateTraffic(dt);
         updateRaceProgress(dt);
         checkCollisions();
 
@@ -333,27 +399,37 @@
           } else {
             gameOver(`Yarışı ${state.position}. bitirdin. Seviye geçmek için 1. olmalısın.`);
           }
+          return;
         }
 
         updateHud();
       }
 
       function drawRoad() {
-        ctx.fillStyle = "#2a2a2a";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const sky = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.4);
+        sky.addColorStop(0, "#5aa9ff");
+        sky.addColorStop(1, "#8fd3ff");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, canvas.width, canvas.height * 0.42);
 
-        ctx.fillStyle = "#14532d";
-        ctx.fillRect(0, 0, 70, canvas.height);
-        ctx.fillRect(canvas.width - 70, 0, 70, canvas.height);
+        ctx.fillStyle = "#3f7f3f";
+        ctx.fillRect(0, canvas.height * 0.42, canvas.width, canvas.height * 0.58);
 
-        const stripeOffset = (state.worldOffset * 0.9) % 60;
-        ctx.strokeStyle = "#bdbdbd";
+        ctx.fillStyle = "#2f2f2f";
+        ctx.fillRect(70, 0, canvas.width - 140, canvas.height);
+
+        ctx.fillStyle = "#d2d2d2";
+        ctx.fillRect(70, 0, 4, canvas.height);
+        ctx.fillRect(canvas.width - 74, 0, 4, canvas.height);
+
+        const stripeOffset = (state.worldOffset * 1.2) % 70;
+        ctx.strokeStyle = "#f7f7f7";
         ctx.lineWidth = 4;
         for (let i = 1; i < laneCount; i++) {
-          for (let y = -60; y < canvas.height + 60; y += 60) {
+          for (let y = -80; y < canvas.height + 80; y += 70) {
             ctx.beginPath();
             ctx.moveTo(i * laneWidth, y + stripeOffset);
-            ctx.lineTo(i * laneWidth, y + 30 + stripeOffset);
+            ctx.lineTo(i * laneWidth, y + 34 + stripeOffset);
             ctx.stroke();
           }
         }
@@ -361,13 +437,21 @@
 
       function drawTrees() {
         for (const tree of roadsideTrees) {
-          const y = ((tree.offset - state.worldOffset * 0.7) % (canvas.height + 160)) - 80;
-          const x = tree.side === "left" ? 35 : canvas.width - 35;
+          const y = ((tree.offset - state.worldOffset * 0.9) % (canvas.height + 160)) - 80;
+          const x = tree.side === "left" ? 34 : canvas.width - 34;
+
           ctx.fillStyle = "#5b3f1e";
-          ctx.fillRect(x - 4, y + tree.size * 0.25, 8, tree.size * 0.55);
+          ctx.fillRect(x - 4, y + tree.size * 0.3, 8, tree.size * 0.7);
+
           ctx.beginPath();
           ctx.arc(x, y, tree.size, 0, Math.PI * 2);
           ctx.fillStyle = "#1f8a3b";
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(x - 8, y - 5, tree.size * 0.45, 0, Math.PI * 2);
+          ctx.arc(x + 8, y - 6, tree.size * 0.42, 0, Math.PI * 2);
+          ctx.fillStyle = "#2faa4a";
           ctx.fill();
         }
       }
@@ -376,21 +460,33 @@
         const left = x - width / 2;
         const top = y - height / 2;
 
-        ctx.fillStyle = color;
+        const bodyGrad = ctx.createLinearGradient(left, top, left, top + height);
+        bodyGrad.addColorStop(0, "#ffffff22");
+        bodyGrad.addColorStop(0.18, color);
+        bodyGrad.addColorStop(1, "#00000055");
+
+        ctx.fillStyle = bodyGrad;
         ctx.fillRect(left, top, width, height);
 
-        ctx.fillStyle = "#111";
-        ctx.fillRect(left + 4, top + 7, width - 8, 15);
-        ctx.fillRect(left + 4, top + height - 22, width - 8, 15);
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(left + 6, top + 9, width - 12, 13);
+        ctx.fillRect(left + 8, top + 28, width - 16, 22);
 
-        ctx.fillStyle = "#3aa7ff";
-        ctx.fillRect(left + 8, top + 28, width - 16, 18);
+        ctx.fillStyle = "#8bd3ff";
+        ctx.fillRect(left + 10, top + 30, width - 20, 18);
+
+        ctx.fillStyle = "#111";
+        ctx.fillRect(left + 5, top + height - 20, width - 10, 11);
 
         ctx.fillStyle = "#0b0b0b";
-        ctx.fillRect(left - 5, top + 10, 5, 18);
-        ctx.fillRect(left + width, top + 10, 5, 18);
-        ctx.fillRect(left - 5, top + height - 28, 5, 18);
-        ctx.fillRect(left + width, top + height - 28, 5, 18);
+        ctx.fillRect(left - 5, top + 12, 5, 20);
+        ctx.fillRect(left + width, top + 12, 5, 20);
+        ctx.fillRect(left - 5, top + height - 33, 5, 20);
+        ctx.fillRect(left + width, top + height - 33, 5, 20);
+
+        ctx.fillStyle = "#ffd166";
+        ctx.fillRect(left + 2, top + 3, 8, 4);
+        ctx.fillRect(left + width - 10, top + 3, 8, 4);
 
         if (label) {
           ctx.fillStyle = "#fff";
@@ -400,26 +496,26 @@
         }
       }
 
-      function drawRivals() {
-        const ordered = [...rivals].sort((a, b) => b.progress - a.progress);
-        for (const rival of ordered) {
-          const rel = rival.progress - player.progress;
-          if (rel < -140 || rel > canvas.height - 40) continue;
+      function drawWorldCars(cars, withRank = false) {
+        const ordered = withRank ? [...cars].sort((a, b) => b.progress - a.progress) : cars;
+        for (const car of ordered) {
+          const rel = car.progress - player.progress;
+          if (rel < -170 || rel > canvas.height - 20) continue;
           const y = player.y - rel;
-          const x = rival.x ?? laneCenter(rival.lane);
-          const rank = ordered.indexOf(rival) + 1;
-          drawCarShape(x, y, rival.width, rival.height, rival.color, `${rank}`);
+          const label = withRank ? `${ordered.indexOf(car) + 1}` : "";
+          drawCarShape(car.x, y, car.width, car.height, car.color, label);
         }
       }
 
       function render() {
         drawRoad();
         drawTrees();
-        drawRivals();
+        drawWorldCars(trafficCars, false);
+        drawWorldCars(rivals, true);
         drawCarShape(player.x, player.y, player.width, player.height, player.color, "SEN");
 
         if (!state.running) {
-          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillStyle = "rgba(0,0,0,0.58)";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.fillStyle = "#fff";
           ctx.font = "bold 42px Arial";
@@ -436,6 +532,7 @@
         positionEl.textContent = `${state.position} / ${totalCars}`;
         timeEl.textContent = Math.max(0, state.timeLeft).toFixed(1);
         distanceEl.textContent = Math.max(0, Math.ceil(state.distanceLeft));
+        speedEl.textContent = Math.floor(player.speed * 1.12);
       }
 
       let lastTime = performance.now();
@@ -448,11 +545,8 @@
       }
 
       const controlKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D"]);
-
       window.addEventListener("keydown", (e) => {
-        if (controlKeys.has(e.key)) {
-          e.preventDefault();
-        }
+        if (controlKeys.has(e.key)) e.preventDefault();
         keys.add(e.key.toLowerCase());
       });
       window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
