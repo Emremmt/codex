@@ -80,6 +80,7 @@
       <div id="hud">
         <div class="pill">Seviye: <span id="level">1</span></div>
         <div class="pill">Araba: <span id="car">1 / 10</span></div>
+        <div class="pill">Sıra: <span id="position">1 / 10</span></div>
         <div class="pill">Süre: <span id="time">90.0</span>s</div>
         <div class="pill">Kalan Mesafe: <span id="distance">5400</span> m</div>
       </div>
@@ -89,7 +90,7 @@
     </header>
 
     <main id="game-wrap">
-      <canvas id="game" width="900" height="540"></canvas>
+      <canvas id="game" width="960" height="540"></canvas>
     </main>
 
     <section id="controls">
@@ -103,6 +104,7 @@
 
       const levelEl = document.getElementById("level");
       const carEl = document.getElementById("car");
+      const positionEl = document.getElementById("position");
       const timeEl = document.getElementById("time");
       const distanceEl = document.getElementById("distance");
       const messageEl = document.getElementById("message");
@@ -115,6 +117,7 @@
       const trackLengthMeters = 5400;
       const totalCars = 10;
       const maxLevels = 10;
+      const rivalCount = 9;
 
       const state = {
         currentCar: 1,
@@ -124,38 +127,54 @@
         running: true,
         finished: false,
         win: false,
+        position: 1,
+        worldOffset: 0,
       };
 
       const player = {
         lane: 1,
         x: laneWidth * 1 + laneWidth / 2,
-        y: canvas.height - 90,
-        width: 40,
-        height: 70,
+        y: canvas.height - 100,
+        width: 46,
+        height: 84,
         speed: 0,
-        maxSpeed: 320,
+        maxSpeed: 310,
         acceleration: 220,
-        brakePower: 280,
-        steerSpeed: 400,
+        brakePower: 290,
+        steerSpeed: 420,
+        progress: 0,
+        color: "#ef4444",
       };
 
-      const aiCars = [];
+      const rivals = [];
+      const roadsideTrees = [];
 
       function laneCenter(lane) {
         return lane * laneWidth + laneWidth / 2;
       }
 
-      function spawnTraffic() {
-        aiCars.length = 0;
-        const trafficCount = 7 + state.level;
-        for (let i = 0; i < trafficCount; i++) {
-          aiCars.push({
-            lane: Math.floor(Math.random() * laneCount),
-            y: -Math.random() * canvas.height * 2,
-            width: 38,
-            height: 68,
-            speed: 130 + Math.random() * 140 + state.level * 8,
-            color: `hsl(${Math.random() * 360}, 70%, 55%)`,
+      function createRivals() {
+        rivals.length = 0;
+        for (let i = 0; i < rivalCount; i++) {
+          rivals.push({
+            lane: i % laneCount,
+            progress: 40 + i * 15,
+            speed: 230 + Math.random() * 55,
+            color: `hsl(${(i * 37) % 360}, 75%, 55%)`,
+            width: 44,
+            height: 82,
+          });
+        }
+      }
+
+      function createTrees() {
+        roadsideTrees.length = 0;
+        for (let i = 0; i < 24; i++) {
+          const side = i % 2 === 0 ? "left" : "right";
+          roadsideTrees.push({
+            side,
+            offset: i * 130,
+            size: 20 + Math.random() * 12,
           });
         }
       }
@@ -168,15 +187,18 @@
         state.running = true;
         state.finished = false;
         state.win = false;
-        messageEl.textContent = "Yarış başlıyor!";
+        state.position = 1;
+        state.worldOffset = 0;
+        messageEl.textContent = "Yarış başlıyor! Rakipleri geç.";
 
-        player.lane = 1;
-        player.x = laneCenter(player.lane);
+        player.x = laneCenter(1);
         player.speed = 0;
-        player.maxSpeed = 300;
+        player.maxSpeed = 310;
         player.acceleration = 220;
+        player.progress = 0;
 
-        spawnTraffic();
+        createRivals();
+        createTrees();
         updateHud();
       }
 
@@ -185,7 +207,7 @@
           state.finished = true;
           state.running = false;
           state.win = true;
-          messageEl.textContent = "Tüm seviyeler tamamlandı! Şampiyonsun 🏁";
+          messageEl.textContent = "Tüm seviyeler tamamlandı! Efsane sürüş 🏁";
           return;
         }
 
@@ -193,15 +215,17 @@
         state.currentCar = state.level;
         state.timeLeft = mapDurationSec;
         state.distanceLeft = trackLengthMeters;
+        state.position = 1;
+        state.worldOffset = 0;
 
-        player.maxSpeed = 300 + state.level * 10;
+        player.maxSpeed = 310 + state.level * 11;
         player.acceleration = 220 + state.level * 4;
         player.speed = 0;
-        player.lane = 1;
-        player.x = laneCenter(player.lane);
+        player.x = laneCenter(1);
+        player.progress = 0;
 
-        spawnTraffic();
-        messageEl.textContent = `Seviye ${state.level}! Araba ${state.currentCar} ile devam.`;
+        createRivals();
+        messageEl.textContent = `Seviye ${state.level}! Bu arabayla yarışı kazan.`;
       }
 
       function gameOver(text) {
@@ -212,37 +236,50 @@
       }
 
       function handleInput(dt) {
-        if (keys.has("ArrowUp") || keys.has("w")) {
+        if (keys.has("arrowup") || keys.has("w")) {
           player.speed += player.acceleration * dt;
         }
-        if (keys.has("ArrowDown") || keys.has("s")) {
+        if (keys.has("arrowdown") || keys.has("s")) {
           player.speed -= player.brakePower * dt;
         }
 
-        if (keys.has("ArrowLeft") || keys.has("a")) {
+        if (keys.has("arrowleft") || keys.has("a")) {
           player.x -= player.steerSpeed * dt;
         }
-        if (keys.has("ArrowRight") || keys.has("d")) {
+        if (keys.has("arrowright") || keys.has("d")) {
           player.x += player.steerSpeed * dt;
         }
 
         player.speed *= 0.992;
         player.speed = Math.max(0, Math.min(player.maxSpeed, player.speed));
 
-        const minX = laneWidth * 0 + 18;
-        const maxX = laneWidth * laneCount - 18;
+        const minX = 62;
+        const maxX = canvas.width - 62;
         player.x = Math.max(minX, Math.min(maxX, player.x));
       }
 
-      function updateTraffic(dt) {
-        for (const car of aiCars) {
-          car.y += (player.speed - car.speed) * dt;
-          if (car.y > canvas.height + 120) {
-            car.y = -120 - Math.random() * 300;
-            car.lane = Math.floor(Math.random() * laneCount);
-            car.speed = 120 + Math.random() * 160 + state.level * 10;
+      function updateRivals(dt) {
+        for (const rival of rivals) {
+          const pace = rival.speed + state.level * 7;
+          rival.progress += pace * dt;
+
+          const targetX = laneCenter(rival.lane);
+          if (Math.random() < 0.0025 * state.level) {
+            rival.lane = Math.floor(Math.random() * laneCount);
           }
+          rival.x = rival.x ? rival.x + (targetX - rival.x) * 0.08 : targetX;
         }
+      }
+
+      function updateRaceProgress(dt) {
+        player.progress += player.speed * dt;
+        state.worldOffset += player.speed * dt;
+
+        const sorted = [...rivals.map((r) => r.progress), player.progress].sort((a, b) => b - a);
+        state.position = sorted.indexOf(player.progress) + 1;
+
+        state.distanceLeft = Math.max(0, trackLengthMeters - player.progress);
+        state.timeLeft -= dt;
       }
 
       function collides(a, b) {
@@ -254,15 +291,22 @@
 
       function checkCollisions() {
         const playerBox = { x: player.x, y: player.y, width: player.width, height: player.height };
-        for (const car of aiCars) {
-          const aiBox = {
-            x: laneCenter(car.lane),
-            y: car.y,
-            width: car.width,
-            height: car.height,
+
+        for (const rival of rivals) {
+          const rel = rival.progress - player.progress;
+          if (Math.abs(rel) > 140) continue;
+          const rivalY = player.y - rel;
+          const rivalX = rival.x ?? laneCenter(rival.lane);
+
+          const rivalBox = {
+            x: rivalX,
+            y: rivalY,
+            width: rival.width,
+            height: rival.height,
           };
-          if (collides(playerBox, aiBox)) {
-            gameOver(`Çarpıştın! Seviye ${state.level} başarısız oldu.`);
+
+          if (collides(playerBox, rivalBox)) {
+            gameOver("Rakiple çarpıştın! Yarış dışı kaldın.");
             return;
           }
         }
@@ -272,17 +316,21 @@
         if (!state.running) return;
 
         handleInput(dt);
-        updateTraffic(dt);
+        updateRivals(dt);
+        updateRaceProgress(dt);
         checkCollisions();
 
-        state.timeLeft -= dt;
-        const metersPerSecond = (player.speed / player.maxSpeed) * (trackLengthMeters / mapDurationSec);
-        state.distanceLeft -= Math.max(0, metersPerSecond * dt);
-
         if (state.timeLeft <= 0 && state.distanceLeft > 0) {
-          gameOver("Süre doldu! Haritayı 1.5 dakikada bitiremedin.");
-        } else if (state.distanceLeft <= 0) {
-          nextLevel();
+          gameOver("Süre doldu! 1.5 dakikada bitiremedin.");
+          return;
+        }
+
+        if (state.distanceLeft <= 0) {
+          if (state.position === 1) {
+            nextLevel();
+          } else {
+            gameOver(`Yarışı ${state.position}. bitirdin. Seviye geçmek için 1. olmalısın.`);
+          }
         }
 
         updateHud();
@@ -293,36 +341,80 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.fillStyle = "#14532d";
-        ctx.fillRect(0, 0, 50, canvas.height);
-        ctx.fillRect(canvas.width - 50, 0, 50, canvas.height);
+        ctx.fillRect(0, 0, 70, canvas.height);
+        ctx.fillRect(canvas.width - 70, 0, 70, canvas.height);
 
+        const stripeOffset = (state.worldOffset * 0.9) % 60;
         ctx.strokeStyle = "#bdbdbd";
         ctx.lineWidth = 4;
-        ctx.setLineDash([30, 20]);
         for (let i = 1; i < laneCount; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * laneWidth, 0);
-          ctx.lineTo(i * laneWidth, canvas.height);
-          ctx.stroke();
+          for (let y = -60; y < canvas.height + 60; y += 60) {
+            ctx.beginPath();
+            ctx.moveTo(i * laneWidth, y + stripeOffset);
+            ctx.lineTo(i * laneWidth, y + 30 + stripeOffset);
+            ctx.stroke();
+          }
         }
-        ctx.setLineDash([]);
       }
 
-      function drawCar(x, y, width, height, color) {
+      function drawTrees() {
+        for (const tree of roadsideTrees) {
+          const y = ((tree.offset - state.worldOffset * 0.7) % (canvas.height + 160)) - 80;
+          const x = tree.side === "left" ? 35 : canvas.width - 35;
+          ctx.fillStyle = "#5b3f1e";
+          ctx.fillRect(x - 4, y + tree.size * 0.25, 8, tree.size * 0.55);
+          ctx.beginPath();
+          ctx.arc(x, y, tree.size, 0, Math.PI * 2);
+          ctx.fillStyle = "#1f8a3b";
+          ctx.fill();
+        }
+      }
+
+      function drawCarShape(x, y, width, height, color, label = "") {
+        const left = x - width / 2;
+        const top = y - height / 2;
+
         ctx.fillStyle = color;
-        ctx.fillRect(x - width / 2, y - height / 2, width, height);
+        ctx.fillRect(left, top, width, height);
+
         ctx.fillStyle = "#111";
-        ctx.fillRect(x - width / 2 + 5, y - height / 2 + 8, width - 10, 18);
+        ctx.fillRect(left + 4, top + 7, width - 8, 15);
+        ctx.fillRect(left + 4, top + height - 22, width - 8, 15);
+
+        ctx.fillStyle = "#3aa7ff";
+        ctx.fillRect(left + 8, top + 28, width - 16, 18);
+
+        ctx.fillStyle = "#0b0b0b";
+        ctx.fillRect(left - 5, top + 10, 5, 18);
+        ctx.fillRect(left + width, top + 10, 5, 18);
+        ctx.fillRect(left - 5, top + height - 28, 5, 18);
+        ctx.fillRect(left + width, top + height - 28, 5, 18);
+
+        if (label) {
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 12px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(label, x, top - 8);
+        }
+      }
+
+      function drawRivals() {
+        const ordered = [...rivals].sort((a, b) => b.progress - a.progress);
+        for (const rival of ordered) {
+          const rel = rival.progress - player.progress;
+          if (rel < -140 || rel > canvas.height - 40) continue;
+          const y = player.y - rel;
+          const x = rival.x ?? laneCenter(rival.lane);
+          const rank = ordered.indexOf(rival) + 1;
+          drawCarShape(x, y, rival.width, rival.height, rival.color, `${rank}`);
+        }
       }
 
       function render() {
         drawRoad();
-
-        for (const car of aiCars) {
-          drawCar(laneCenter(car.lane), car.y, car.width, car.height, car.color);
-        }
-
-        drawCar(player.x, player.y, player.width, player.height, "#ef4444");
+        drawTrees();
+        drawRivals();
+        drawCarShape(player.x, player.y, player.width, player.height, player.color, "SEN");
 
         if (!state.running) {
           ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -339,6 +431,7 @@
       function updateHud() {
         levelEl.textContent = state.level;
         carEl.textContent = `${state.currentCar} / ${totalCars}`;
+        positionEl.textContent = `${state.position} / ${totalCars}`;
         timeEl.textContent = Math.max(0, state.timeLeft).toFixed(1);
         distanceEl.textContent = Math.max(0, Math.ceil(state.distanceLeft));
       }
@@ -347,16 +440,13 @@
       function loop(now) {
         const dt = Math.min(0.05, (now - lastTime) / 1000);
         lastTime = now;
-
         updateGame(dt);
         render();
-
         requestAnimationFrame(loop);
       }
 
       window.addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
       window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
-
       restartBtn.addEventListener("click", resetRun);
 
       resetRun();
