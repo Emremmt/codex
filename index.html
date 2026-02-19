@@ -79,8 +79,8 @@
     <header>
       <div id="hud">
         <div class="pill">Seviye: <span id="level">1</span></div>
-        <div class="pill">Araba: <span id="car">1 / 10</span></div>
-        <div class="pill">Sıra: <span id="position">1 / 10</span></div>
+        <div class="pill">Araba: <span id="car">1 / 3</span></div>
+        <div class="pill">Sıra: <span id="position">1 / 3</span></div>
         <div class="pill">Süre: <span id="time">90.0</span>s</div>
         <div class="pill">Kalan Mesafe: <span id="distance">5400</span> m</div>
       </div>
@@ -115,9 +115,9 @@
       const laneWidth = canvas.width / laneCount;
       const mapDurationSec = 90;
       const trackLengthMeters = 5400;
-      const totalCars = 10;
-      const maxLevels = 10;
-      const rivalCount = 9;
+      const totalCars = 3;
+      const maxLevels = 3;
+      const rivalCount = 2;
 
       const state = {
         currentCar: 1,
@@ -155,12 +155,14 @@
 
       function createRivals() {
         rivals.length = 0;
+        const startLanes = [0, 2];
         for (let i = 0; i < rivalCount; i++) {
           rivals.push({
-            lane: i % laneCount,
-            progress: 40 + i * 15,
-            speed: 230 + Math.random() * 55,
-            color: `hsl(${(i * 37) % 360}, 75%, 55%)`,
+            lane: startLanes[i],
+            x: laneCenter(startLanes[i]),
+            progress: 0,
+            speed: 220 + Math.random() * 40,
+            color: `hsl(${(i * 60 + 30) % 360}, 75%, 55%)`,
             width: 44,
             height: 82,
           });
@@ -189,7 +191,7 @@
         state.win = false;
         state.position = 1;
         state.worldOffset = 0;
-        messageEl.textContent = "Yarış başlıyor! Rakipleri geç.";
+        messageEl.textContent = "Yarış başlıyor! 3 araba yan yana start aldı.";
 
         player.x = laneCenter(1);
         player.speed = 0;
@@ -264,7 +266,7 @@
           rival.progress += pace * dt;
 
           const targetX = laneCenter(rival.lane);
-          if (Math.random() < 0.0025 * state.level) {
+          if (player.progress > 250 && Math.random() < 0.0015 * state.level) {
             rival.lane = Math.floor(Math.random() * laneCount);
           }
           rival.x = rival.x ? rival.x + (targetX - rival.x) * 0.08 : targetX;
@@ -306,7 +308,7 @@
           };
 
           if (collides(playerBox, rivalBox)) {
-            gameOver("Rakiple çarpıştın! Yarış dışı kaldın.");
+            gameOver("Rakiple çarpıştın! Tekrar dene.");
             return;
           }
         }
