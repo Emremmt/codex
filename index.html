@@ -445,7 +445,14 @@
         requestAnimationFrame(loop);
       }
 
-      window.addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
+      const controlKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D"]);
+
+      window.addEventListener("keydown", (e) => {
+        if (controlKeys.has(e.key)) {
+          e.preventDefault();
+        }
+        keys.add(e.key.toLowerCase());
+      });
       window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
       restartBtn.addEventListener("click", resetRun);
 
