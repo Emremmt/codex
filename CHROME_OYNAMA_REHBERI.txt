@@ -1,0 +1,25 @@
+Kale Savunması - Chrome Oynama Rehberi
+
+1) Proje klasöründe terminal aç:
+   cd /workspace/codex
+
+2) Basit bir yerel sunucu başlat:
+   python3 -m http.server 8000
+
+3) Google Chrome ile oyunu aç:
+   http://127.0.0.1:8000
+
+4) Oyun açıldığında komutan adını girip "Oyunu Başlat" butonuna bas.
+
+İstersen terminalden Chrome açma komutları:
+- Linux:
+  google-chrome http://127.0.0.1:8000
+
+- macOS:
+  open -a "Google Chrome" http://127.0.0.1:8000
+
+- Windows (PowerShell):
+  start chrome http://127.0.0.1:8000
+
+Not:
+- Oyun dosyalarını doğrudan çift tıklayıp açmak yerine mutlaka yerel sunucu üzerinden çalıştır.

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kale Savunması: Krallığın Son Kalesi</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="startOverlay" class="overlay">
+      <div class="overlay-card">
+        <h1>Krallığın Son Kalesi</h1>
+        <p>Komutan adını gir ve kaleyi savunmaya başla.</p>
+        <input id="playerNameInput" type="text" maxlength="24" placeholder="Komutan adı" />
+        <button id="startBtn">Oyunu Başlat</button>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="stats">
+        <span id="playerName">Komutan: -</span>
+        <span id="level">Seviye: 1</span>
+        <span id="time">Kalan Süre: 60</span>
+        <span id="gold">Altın: 250</span>
+        <span id="castleHp">Kale Canı: 1300 / 1300</span>
+      </div>
+      <div id="phase" class="phase">Hazır ol komutan!</div>
+    </div>
+
+    <main>
+      <canvas id="gameCanvas" width="1600" height="700"></canvas>
+      <aside class="market">
+        <h2>Kale Pazarı</h2>
+        <p>Kaleyi güçlendir, savunma hatlarını genişlet.</p>
+
+        <section class="market-section">
+          <h3>Kale Yükseltmeleri</h3>
+          <button data-upgrade="turret">Okçu Kulesi +1 (140 Altın)</button>
+          <button data-upgrade="cannon">Top Hasarı +25 (180 Altın)</button>
+          <button data-upgrade="wall">Surlar +350 Can (220 Altın)</button>
+        </section>
+
+        <section class="market-section">
+          <h3>Komutan Saldırısı</h3>
+          <button data-upgrade="click">Mouse Saldırısı +20 (130 Altın)</button>
+          <button data-upgrade="splash">Patlayan Ok Etkisi +14 (170 Altın)</button>
+        </section>
+
+        <section class="market-section">
+          <h3>Mancınık ve Savunmacılar</h3>
+          <button data-upgrade="catapult">Mancınık Kur (260 Altın)</button>
+          <button data-upgrade="guard">Kapı Muhafızı Ekle (210 Altın)</button>
+          <button data-upgrade="catapultDamage">Mancınık Hasarı +30 (190 Altın)</button>
+        </section>
+      </aside>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>

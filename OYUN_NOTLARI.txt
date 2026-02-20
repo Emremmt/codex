@@ -1,0 +1,12 @@
+Kale Savunması Oyunu
+
+Tarayıcıda oynamak için:
+1) Bu klasörde terminal aç.
+2) python3 -m http.server 8000
+3) Tarayıcıdan http://127.0.0.1:8000 adresine git.
+
+Notlar:
+- Oyuna başlamadan önce komutan adını gir.
+- Her seviye 60 saniye sürer, 15 saniyede bir düşman yoğunluğu artar.
+- Seviye sonunda altın kazanırsın ve tebrik mesajı görünür.
+- Marketten kule/top/mancınık/muhafız ve saldırı geliştirmeleri alabilirsin.
