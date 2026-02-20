@@ -1,9 +1,16 @@
 Kale Savunması Oyunu
 
-Tarayıcıda oynamak için:
+Tarayıcıda oynamak için (Python YOKSA):
 1) Bu klasörde terminal aç.
-2) python3 -m http.server 8000
+2) npx serve . -l 8000
 3) Tarayıcıdan http://127.0.0.1:8000 adresine git.
+
+Alternatif (VS Code):
+- Live Server eklentisi ile index.html dosyasını local sunucuda aç.
+
+Python varsa klasik yöntem:
+1) python3 -m http.server 8000
+2) http://127.0.0.1:8000
 
 Notlar:
 - Oyuna başlamadan önce komutan adını gir.

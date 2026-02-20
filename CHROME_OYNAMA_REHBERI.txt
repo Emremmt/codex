@@ -1,25 +1,30 @@
 Kale Savunması - Chrome Oynama Rehberi
 
-1) Proje klasöründe terminal aç:
+Python YOKSA hızlı seçenekler:
+
+Seçenek A) Node.js varsa (önerilen)
+1) Proje klasörüne gir:
    cd /workspace/codex
-
-2) Basit bir yerel sunucu başlat:
-   python3 -m http.server 8000
-
-3) Google Chrome ile oyunu aç:
+2) Sunucuyu başlat:
+   npx serve . -l 8000
+3) Chrome'da aç:
    http://127.0.0.1:8000
 
-4) Oyun açıldığında komutan adını girip "Oyunu Başlat" butonuna bas.
+Seçenek B) VS Code kullanıyorsan
+1) Klasörü VS Code ile aç.
+2) "Live Server" eklentisini kur.
+3) index.html üzerinde sağ tık -> "Open with Live Server".
 
-İstersen terminalden Chrome açma komutları:
-- Linux:
-  google-chrome http://127.0.0.1:8000
+Seçenek C) Sadece Chrome ile (eklentili)
+1) Chrome Web Store'dan "Web Server for Chrome" benzeri local server eklentisi kur.
+2) /workspace/codex klasörünü kök klasör olarak seç.
+3) Verilen local adresi Chrome'da aç.
 
-- macOS:
-  open -a "Google Chrome" http://127.0.0.1:8000
+Python VARSA klasik yöntem:
+1) cd /workspace/codex
+2) python3 -m http.server 8000
+3) http://127.0.0.1:8000
 
-- Windows (PowerShell):
-  start chrome http://127.0.0.1:8000
-
-Not:
-- Oyun dosyalarını doğrudan çift tıklayıp açmak yerine mutlaka yerel sunucu üzerinden çalıştır.
+Notlar:
+- Oyun dosyalarını çift tıklayıp direkt açmak yerine local server ile çalıştır.
+- Oyun açılınca komutan adını yazıp "Oyunu Başlat" butonuna bas.
