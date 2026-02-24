@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kale Savunması: Efsanevi Kuşatma</title>
+    <title>Kale Savunması 3D: Efsanevi Kuşatma</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div id="startOverlay" class="overlay">
       <div class="overlay-card">
-        <h1>Efsanevi Kuşatma</h1>
-        <p>Komutan adını yaz, ortaçağ kaleni fantastik canavarlara karşı savun.</p>
+        <h1>Kale Savunması 3D</h1>
+        <p>Komutan adını gir, 3 boyutlu kuşatmayı farklı kamera açılarıyla yönet.</p>
         <input id="playerNameInput" type="text" maxlength="24" placeholder="Komutan adı" />
         <button id="startBtn">Savaşı Başlat</button>
       </div>
@@ -24,47 +24,35 @@
         <span id="gold">Altın: 350</span>
         <span id="castleHp">Kale Canı: 2200 / 2200</span>
       </div>
-      <div id="phase" class="phase">Savaş öncesi hazırlık yapılıyor...</div>
+      <div class="controls">
+        <label for="cameraMode">Kamera:</label>
+        <select id="cameraMode">
+          <option value="siege">Kuşatma (sinematik)</option>
+          <option value="top">Üstten Strateji</option>
+          <option value="follow">Takip</option>
+          <option value="free">Serbest Kamera</option>
+        </select>
+      </div>
+      <div id="phase" class="phase">3D savaş alanı hazırlanıyor...</div>
     </div>
 
     <main>
-      <canvas id="gameCanvas" width="1900" height="820"></canvas>
-
+      <div id="game3d"></div>
       <aside class="market">
         <h2>Kraliyet Marketi</h2>
-        <p>Kaleyi büyüt, birimlerini çoğalt, kuşatmayı kır.</p>
-
-        <section class="market-section">
-          <h3>Kale ve Sur</h3>
-          <button data-upgrade="wall">Ana Surlar +500 Can (260)</button>
-          <button data-upgrade="moat">Hendek Derinleştir (220)</button>
-          <button data-upgrade="reinforce">Demir Kapı Güçlendirme (280)</button>
-        </section>
-
-        <section class="market-section">
-          <h3>Menzilli Savunma</h3>
-          <button data-upgrade="archer">Okçu Birliği +1 (170)</button>
-          <button data-upgrade="ballista">Balista Kur (260)</button>
-          <button data-upgrade="catapult">Mancınık Kur (300)</button>
-          <button data-upgrade="tower">Kule Topu +1 (210)</button>
-        </section>
-
-        <section class="market-section">
-          <h3>Yakın Dövüş ve Büyü</h3>
-          <button data-upgrade="knight">Şövalye Muhafız +1 (190)</button>
-          <button data-upgrade="mage">Büyücü Muhafız +1 (260)</button>
-          <button data-upgrade="frost">Buz Büyüsü (düşman yavaşlatma) (240)</button>
-        </section>
-
-        <section class="market-section">
-          <h3>Komutan Güçleri</h3>
-          <button data-upgrade="click">Mouse Saldırısı +24 (160)</button>
-          <button data-upgrade="splash">Patlama Yarıçapı +18 (180)</button>
-          <button data-upgrade="meteor">Meteor Çağırma Aç (320)</button>
-        </section>
+        <button data-upgrade="wall">Ana Surlar +500 Can (260)</button>
+        <button data-upgrade="archer">Okçu Birliği +1 (170)</button>
+        <button data-upgrade="ballista">Balista Kur (260)</button>
+        <button data-upgrade="catapult">Mancınık Kur (300)</button>
+        <button data-upgrade="knight">Şövalye Muhafız +1 (190)</button>
+        <button data-upgrade="mage">Büyücü Muhafız +1 (260)</button>
+        <button data-upgrade="frost">Buz Büyüsü (240)</button>
+        <button data-upgrade="click">Mouse Saldırısı +24 (160)</button>
       </aside>
     </main>
 
+    <script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
     <script src="game.js"></script>
   </body>
 </html>

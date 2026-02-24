@@ -1,30 +1,19 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-
-const levelEl = document.getElementById('level');
-const timeEl = document.getElementById('time');
-const goldEl = document.getElementById('gold');
-const castleHpEl = document.getElementById('castleHp');
-const phaseEl = document.getElementById('phase');
-const playerNameEl = document.getElementById('playerName');
-
-const startOverlay = document.getElementById('startOverlay');
-const playerNameInput = document.getElementById('playerNameInput');
-const startBtn = document.getElementById('startBtn');
+const ui = {
+  level: document.getElementById('level'),
+  time: document.getElementById('time'),
+  gold: document.getElementById('gold'),
+  hp: document.getElementById('castleHp'),
+  phase: document.getElementById('phase'),
+  playerName: document.getElementById('playerName'),
+  startOverlay: document.getElementById('startOverlay'),
+  playerNameInput: document.getElementById('playerNameInput'),
+  startBtn: document.getElementById('startBtn'),
+  cameraMode: document.getElementById('cameraMode'),
+  root: document.getElementById('game3d'),
+};
 
 const LEVEL_DURATION = 60;
 const DENSITY_INTERVAL = 15;
-const GROUND_Y = 590;
-
-const enemyTypes = [
-  { name: 'Goblin', hp: 110, speed: 58, damage: 30, size: 22, color: '#8ac46e' },
-  { name: 'Ork', hp: 190, speed: 44, damage: 48, size: 30, color: '#6f9f46' },
-  { name: 'Troll', hp: 320, speed: 30, damage: 72, size: 38, color: '#6b766f' },
-  { name: 'Alev İblisi', hp: 260, speed: 52, damage: 84, size: 30, color: '#ca6a3a' },
-  { name: 'Buz Wraith', hp: 300, speed: 50, damage: 66, size: 32, color: '#8ad7eb' },
-  { name: 'Taş Golem', hp: 520, speed: 24, damage: 110, size: 46, color: '#8d867f' },
-  { name: 'Mini Ejder', hp: 420, speed: 46, damage: 118, size: 40, color: '#b84d66' },
-];
 
 const state = {
   started: false,
@@ -37,251 +26,275 @@ const state = {
   intermissionTime: 0,
   densityStep: 0,
   spawnTick: 0,
-  enemies: [],
-  projectiles: [],
-  clickBursts: [],
-  player: {
-    clickDamage: 90,
-    splashRadius: 66,
-    meteorUnlocked: false,
-  },
+  player: { clickDamage: 80 },
   castle: {
-    x: 230,
-    y: GROUND_Y,
-    maxHp: 2200,
     hp: 2200,
-    baseAutoDamage: 60,
-    towers: 2,
+    maxHp: 2200,
     archers: 2,
-    ballistae: 0,
-    catapults: 0,
+    ballista: 0,
+    catapult: 0,
     knights: 1,
     mages: 0,
-    moatLevel: 0,
-    gateArmor: 0,
-    frostAura: false,
-    defenseCooldown: 0,
+    frost: false,
+    baseDamage: 55,
+    cooldown: 0,
   },
+  enemies: [],
+  projectiles: [],
+  cameraMode: 'siege',
 };
 
-const upgrades = {
-  wall: { cost: 260, apply: () => { state.castle.maxHp += 500; state.castle.hp += 500; } },
-  moat: { cost: 220, apply: () => { state.castle.moatLevel += 1; } },
-  reinforce: { cost: 280, apply: () => { state.castle.gateArmor += 1; state.castle.maxHp += 180; state.castle.hp += 180; } },
-  archer: { cost: 170, apply: () => { state.castle.archers += 1; state.castle.baseAutoDamage += 8; } },
-  ballista: { cost: 260, apply: () => { state.castle.ballistae += 1; } },
-  catapult: { cost: 300, apply: () => { state.castle.catapults += 1; } },
-  tower: { cost: 210, apply: () => { state.castle.towers += 1; state.castle.baseAutoDamage += 14; } },
-  knight: { cost: 190, apply: () => { state.castle.knights += 1; } },
-  mage: { cost: 260, apply: () => { state.castle.mages += 1; } },
-  frost: { cost: 240, apply: () => { state.castle.frostAura = true; } },
-  click: { cost: 160, apply: () => { state.player.clickDamage += 24; } },
-  splash: { cost: 180, apply: () => { state.player.splashRadius += 18; } },
-  meteor: { cost: 320, apply: () => { state.player.meteorUnlocked = true; } },
-};
+const enemyTypes = [
+  { name: 'Goblin', hp: 120, speed: 15, damage: 30, color: 0x75c15a, scale: 1.0 },
+  { name: 'Ork', hp: 190, speed: 11, damage: 48, color: 0x5f9740, scale: 1.2 },
+  { name: 'Troll', hp: 320, speed: 8, damage: 72, color: 0x7a7a7a, scale: 1.6 },
+  { name: 'Alev Iblisi', hp: 280, speed: 12, damage: 86, color: 0xce622f, scale: 1.3 },
+  { name: 'Buz Wraith', hp: 300, speed: 13, damage: 70, color: 0x8ad7eb, scale: 1.25 },
+  { name: 'Tas Golem', hp: 520, speed: 6, damage: 115, color: 0x8c857d, scale: 1.9 },
+  { name: 'Mini Ejder', hp: 460, speed: 10, damage: 125, color: 0xb84d66, scale: 1.75 },
+];
 
-function updateHud() {
-  playerNameEl.textContent = `Komutan: ${state.playerName}`;
-  levelEl.textContent = `Seviye: ${state.level}`;
-  timeEl.textContent = state.intermission
-    ? `Sonraki Dalga: ${state.intermissionTime.toFixed(1)}`
-    : `Kalan Süre: ${Math.ceil(state.levelTime)}`;
-  goldEl.textContent = `Altın: ${Math.floor(state.gold)}`;
-  castleHpEl.textContent = `Kale Canı: ${Math.max(0, Math.ceil(state.castle.hp))} / ${state.castle.maxHp}`;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 160, 420);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.shadowMap.enabled = true;
+ui.root.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enabled = false;
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x335533, 0.9);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0d8, 1.2);
+sun.position.set(80, 120, 40);
+sun.castShadow = true;
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(700, 220),
+  new THREE.MeshStandardMaterial({ color: 0x3c6e35 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+function makeCastle() {
+  const group = new THREE.Group();
+  group.position.set(-240, 0, 0);
+
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9da5b4, roughness: 0.9 });
+  const darkStone = new THREE.MeshStandardMaterial({ color: 0x7c8699, roughness: 0.9 });
+
+  const keep = new THREE.Mesh(new THREE.BoxGeometry(70, 65, 52), stoneMat);
+  keep.position.set(0, 33, 0);
+  keep.castShadow = true;
+  group.add(keep);
+
+  const towerGeo = new THREE.CylinderGeometry(14, 14, 74, 18);
+  const t1 = new THREE.Mesh(towerGeo, darkStone);
+  const t2 = t1.clone();
+  t1.position.set(-44, 37, -24);
+  t2.position.set(-44, 37, 24);
+  const t3 = t1.clone();
+  const t4 = t2.clone();
+  t3.position.set(44, 37, -24);
+  t4.position.set(44, 37, 24);
+  [t1, t2, t3, t4].forEach((t) => { t.castShadow = true; group.add(t); });
+
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(16, 22, 20), new THREE.MeshStandardMaterial({ color: 0x5c3218 }));
+  gate.position.set(35, 11, 0);
+  group.add(gate);
+
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(32, 30, 110), darkStone);
+  wall.position.set(70, 15, 0);
+  wall.castShadow = true;
+  group.add(wall);
+
+  return group;
 }
 
+const castle = makeCastle();
+scene.add(castle);
+
+const moat = new THREE.Mesh(
+  new THREE.BoxGeometry(24, 1.2, 115),
+  new THREE.MeshStandardMaterial({ color: 0x246fa4, transparent: true, opacity: 0.85 })
+);
+moat.position.set(-138, 0.6, 0);
+scene.add(moat);
+
+const enemyGroup = new THREE.Group();
+scene.add(enemyGroup);
+const projectileGroup = new THREE.Group();
+scene.add(projectileGroup);
+
+function resize() {
+  const w = ui.root.clientWidth;
+  const h = ui.root.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
 function spawnEnemy() {
-  const unlocked = Math.min(enemyTypes.length, 1 + Math.floor(state.level / 1.3));
+  const unlocked = Math.min(enemyTypes.length, 1 + Math.floor(state.level / 1.2));
   const type = enemyTypes[Math.floor(Math.random() * unlocked)];
-  const scale = 1 + (state.level - 1) * 0.23;
+  const scale = 1 + (state.level - 1) * 0.2;
+
+  const mesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(5 * type.scale, 8 * type.scale, 4, 8),
+    new THREE.MeshStandardMaterial({ color: type.color })
+  );
+  mesh.castShadow = true;
+  mesh.position.set(260 + Math.random() * 40, 8 * type.scale, (Math.random() - 0.5) * 80);
+  enemyGroup.add(mesh);
+
   state.enemies.push({
-    name: type.name,
-    x: canvas.width + 70,
-    y: GROUND_Y + (Math.random() * 26 - 13),
+    mesh,
     hp: type.hp * scale,
     maxHp: type.hp * scale,
-    speed: type.speed + state.level * 1.7,
+    speed: type.speed + state.level * 0.8,
     damage: type.damage * (1 + (state.level - 1) * 0.14),
-    size: type.size,
-    color: type.color,
     chilled: 0,
   });
 }
 
-function shootDefenses() {
+function shootProjectile(from, target, damage, color, speed = 120, splash = 0, chill = false) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1.6, 10, 10),
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25 })
+  );
+  mesh.position.copy(from);
+  projectileGroup.add(mesh);
+
+  state.projectiles.push({ mesh, target, damage, speed, splash, chill });
+}
+
+function castleFire() {
   if (!state.enemies.length) return;
-  const targets = [...state.enemies].sort((a, b) => a.x - b.x);
-  const autoDamage = state.castle.baseAutoDamage + state.level * 3;
+  const sorted = [...state.enemies].sort((a, b) => a.mesh.position.x - b.mesh.position.x);
+  const base = state.castle.baseDamage + state.level * 3;
 
-  for (let i = 0; i < state.castle.archers + state.castle.towers; i += 1) {
-    const t = targets[i % targets.length];
-    state.projectiles.push({
-      x: state.castle.x + 150,
-      y: state.castle.y - 280 + i * 8,
-      tx: t.x,
-      ty: t.y - t.size,
-      speed: 360,
-      damage: autoDamage,
-      radius: 4,
-      color: '#ffe8a0',
-    });
+  for (let i = 0; i < state.castle.archers; i += 1) {
+    const t = sorted[i % sorted.length];
+    shootProjectile(new THREE.Vector3(-170, 42, -24 + i * 10), t, base, 0xffe39d, 170);
   }
-
-  for (let i = 0; i < state.castle.ballistae; i += 1) {
-    const t = targets[(i * 2) % targets.length];
-    state.projectiles.push({
-      x: state.castle.x + 130,
-      y: state.castle.y - 150,
-      tx: t.x,
-      ty: t.y - t.size,
-      speed: 300,
-      damage: autoDamage + 95,
-      radius: 8,
-      color: '#ffab62',
-      pierce: 2,
-    });
+  for (let i = 0; i < state.castle.ballista; i += 1) {
+    const t = sorted[(i * 2) % sorted.length];
+    shootProjectile(new THREE.Vector3(-175, 30, -10 + i * 16), t, base + 80, 0xff9e58, 130);
   }
-
-  for (let i = 0; i < state.castle.catapults; i += 1) {
-    const t = targets[(i * 3) % targets.length];
-    state.projectiles.push({
-      x: state.castle.x + 60 + i * 24,
-      y: state.castle.y - 70,
-      tx: t.x,
-      ty: t.y - t.size,
-      speed: 240,
-      damage: autoDamage + 120,
-      splash: 86,
-      radius: 12,
-      color: '#ffd07a',
-    });
+  for (let i = 0; i < state.castle.catapult; i += 1) {
+    const t = sorted[(i * 3) % sorted.length];
+    shootProjectile(new THREE.Vector3(-190, 16, i * 10), t, base + 100, 0xffd078, 95, 15);
   }
-
-  if (state.castle.mages > 0) {
-    const nearest = targets[0];
-    state.projectiles.push({
-      x: state.castle.x + 120,
-      y: state.castle.y - 230,
-      tx: nearest.x,
-      ty: nearest.y - nearest.size,
-      speed: 280,
-      damage: autoDamage + state.castle.mages * 30,
-      splash: 70,
-      radius: 9,
-      color: '#96d8ff',
-      chill: state.castle.frostAura,
-    });
+  for (let i = 0; i < state.castle.mages; i += 1) {
+    const t = sorted[(i * 4) % sorted.length];
+    shootProjectile(new THREE.Vector3(-165, 45, 14 + i * 8), t, base + 60, 0x8fdcff, 120, 12, state.castle.frost);
   }
 }
 
-function applyLevelRewards() {
+function applyUpgrade(key) {
+  const map = {
+    wall: { cost: 260, fn: () => { state.castle.maxHp += 500; state.castle.hp += 500; } },
+    archer: { cost: 170, fn: () => { state.castle.archers += 1; state.castle.baseDamage += 6; } },
+    ballista: { cost: 260, fn: () => { state.castle.ballista += 1; } },
+    catapult: { cost: 300, fn: () => { state.castle.catapult += 1; } },
+    knight: { cost: 190, fn: () => { state.castle.knights += 1; } },
+    mage: { cost: 260, fn: () => { state.castle.mages += 1; } },
+    frost: { cost: 240, fn: () => { state.castle.frost = true; } },
+    click: { cost: 160, fn: () => { state.player.clickDamage += 24; } },
+  };
+  const up = map[key];
+  if (!up) return;
+  if (state.gold < up.cost) { ui.phase.textContent = `Yetersiz altın ${state.playerName}!`; return; }
+  state.gold -= up.cost;
+  up.fn();
+  ui.phase.textContent = 'Yükseltme satın alındı.';
+}
+
+document.querySelectorAll('.market button').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (!state.started || state.gameOver) return;
+    applyUpgrade(button.dataset.upgrade);
+  });
+});
+
+renderer.domElement.addEventListener('click', (ev) => {
+  if (!state.started || state.gameOver) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+    -((ev.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(mouse, camera);
+  const meshes = state.enemies.map((e) => e.mesh);
+  const hit = ray.intersectObjects(meshes)[0];
+  if (!hit) return;
+  const enemy = state.enemies.find((e) => e.mesh === hit.object);
+  if (enemy) enemy.hp -= state.player.clickDamage;
+});
+
+function updateHud() {
+  ui.playerName.textContent = `Komutan: ${state.playerName}`;
+  ui.level.textContent = `Seviye: ${state.level}`;
+  ui.time.textContent = state.intermission ? `Sonraki Dalga: ${state.intermissionTime.toFixed(1)}` : `Kalan Süre: ${Math.ceil(state.levelTime)}`;
+  ui.gold.textContent = `Altın: ${Math.floor(state.gold)}`;
+  ui.hp.textContent = `Kale Canı: ${Math.max(0, Math.ceil(state.castle.hp))} / ${state.castle.maxHp}`;
+}
+
+function applyCamera(dt) {
+  const lead = state.enemies.reduce((a, b) => (a.mesh.position.x < b.mesh.position.x ? a : b), state.enemies[0] || null);
+
+  controls.enabled = state.cameraMode === 'free';
+  if (state.cameraMode === 'free') {
+    controls.target.set(-130, 28, 0);
+    controls.update();
+    return;
+  }
+
+  const blend = Math.min(1, dt * 4);
+  let pos = new THREE.Vector3();
+  let look = new THREE.Vector3(-140, 25, 0);
+
+  if (state.cameraMode === 'siege') {
+    pos.set(-40, 70, 130);
+  } else if (state.cameraMode === 'top') {
+    pos.set(-60, 180, 0);
+    look.set(-90, 0, 0);
+  } else if (state.cameraMode === 'follow') {
+    const tx = lead ? lead.mesh.position.x : -20;
+    const tz = lead ? lead.mesh.position.z : 0;
+    pos.set(tx - 50, 45, tz + 70);
+    look.set(tx, 20, tz);
+  }
+
+  camera.position.lerp(pos, blend);
+  camera.lookAt(look);
+}
+
+ui.cameraMode.addEventListener('change', () => {
+  state.cameraMode = ui.cameraMode.value;
+  ui.phase.textContent = `Kamera modu: ${ui.cameraMode.options[ui.cameraMode.selectedIndex].text}`;
+});
+
+function levelComplete() {
   const reward = 220 + state.level * 90;
   state.gold += reward;
   state.level += 1;
   state.levelTime = LEVEL_DURATION;
   state.densityStep = 0;
-
-  state.castle.maxHp += 180;
-  state.castle.hp = Math.min(state.castle.maxHp, state.castle.hp + 260);
-  state.castle.baseAutoDamage += 10;
-
   state.intermission = true;
   state.intermissionTime = 5;
-  phaseEl.textContent = `Muhteşem ${state.playerName}! Seviye temizlendi, +${reward} altın.`;
-}
-
-function drawWorld() {
-  ctx.fillStyle = '#80d9ff';
-  ctx.fillRect(0, 0, canvas.width, 320);
-
-  ctx.fillStyle = '#b9e9ff';
-  ctx.beginPath(); ctx.ellipse(290, 120, 250, 52, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(850, 85, 300, 58, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(1460, 125, 260, 50, 0, 0, Math.PI * 2); ctx.fill();
-
-  ctx.fillStyle = '#6a8e6b';
-  ctx.beginPath(); ctx.ellipse(360, 420, 480, 170, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(1200, 450, 700, 220, 0, 0, Math.PI * 2); ctx.fill();
-
-  ctx.fillStyle = '#365739';
-  ctx.fillRect(0, 320, canvas.width, canvas.height - 320);
-
-  ctx.fillStyle = '#b99552';
-  ctx.fillRect(0, GROUND_Y + 5, canvas.width, 8);
-
-  if (state.castle.moatLevel > 0) {
-    ctx.fillStyle = '#2b81b7';
-    ctx.fillRect(state.castle.x + 190, GROUND_Y - 8, 120 + state.castle.moatLevel * 35, 16);
-  }
-}
-
-function drawCastle() {
-  const { x, y } = state.castle;
-
-  ctx.fillStyle = '#a7adbe';
-  ctx.fillRect(x - 135, y - 330, 280, 330);
-
-  ctx.fillStyle = '#7e869d';
-  ctx.fillRect(x - 200, y - 280, 70, 280);
-  ctx.fillRect(x + 145, y - 280, 70, 280);
-
-  ctx.fillStyle = '#687088';
-  for (let i = -196; i <= 200; i += 25) {
-    ctx.fillRect(x + i, y - 352, 15, 22);
-  }
-
-  ctx.fillStyle = '#5d3217';
-  ctx.fillRect(x - 40, y - 130, 80, 130);
-
-  ctx.strokeStyle = '#e6cb83';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 4; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(x - 50 + i * 32, y - 130);
-    ctx.lineTo(x - 50 + i * 32, y - 10);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = '#c03b3b';
-  ctx.beginPath();
-  ctx.moveTo(x - 165, y - 300);
-  ctx.lineTo(x - 120, y - 280);
-  ctx.lineTo(x - 165, y - 260);
-  ctx.closePath();
-  ctx.fill();
-
-  for (let i = 0; i < state.castle.archers + state.castle.towers; i += 1) {
-    ctx.fillStyle = '#ffd56b';
-    ctx.beginPath();
-    ctx.arc(x - 95 + (i % 8) * 24, y - 300 - Math.floor(i / 8) * 18, 5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  for (let i = 0; i < state.castle.catapults; i += 1) {
-    ctx.fillStyle = '#8f663d';
-    ctx.fillRect(x - 75 + i * 30, y - 55, 24, 12);
-    ctx.strokeStyle = '#dfbf7a';
-    ctx.beginPath();
-    ctx.moveTo(x - 73 + i * 30, y - 55);
-    ctx.lineTo(x - 63 + i * 30, y - 78);
-    ctx.stroke();
-  }
-}
-
-function drawEnemy(enemy) {
-  ctx.fillStyle = enemy.color;
-  ctx.beginPath();
-  ctx.arc(enemy.x, enemy.y - enemy.size, enemy.size, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#2d2d2d';
-  ctx.fillRect(enemy.x - enemy.size * 0.85, enemy.y - enemy.size * 0.1, enemy.size * 1.7, enemy.size * 1.9);
-
-  const ratio = Math.max(0, enemy.hp / enemy.maxHp);
-  ctx.fillStyle = '#341919';
-  ctx.fillRect(enemy.x - enemy.size, enemy.y - enemy.size - 35, enemy.size * 2, 6);
-  ctx.fillStyle = enemy.chilled > 0 ? '#9ee8ff' : '#7dff8f';
-  ctx.fillRect(enemy.x - enemy.size, enemy.y - enemy.size - 35, enemy.size * 2 * ratio, 6);
+  state.castle.maxHp += 160;
+  state.castle.hp = Math.min(state.castle.maxHp, state.castle.hp + 260);
+  ui.phase.textContent = `Harika ${state.playerName}! Seviye bitti, +${reward} altın.`;
 }
 
 function update(dt) {
@@ -291,156 +304,114 @@ function update(dt) {
     state.intermissionTime -= dt;
     if (state.intermissionTime <= 0) {
       state.intermission = false;
-      phaseEl.textContent = `Seviye ${state.level} başladı. ${state.playerName}, kaleni koru!`;
+      ui.phase.textContent = `Seviye ${state.level} başladı!`;
     }
     return;
   }
 
   state.levelTime -= dt;
-  if (state.levelTime <= 0) return applyLevelRewards();
+  if (state.levelTime <= 0) return levelComplete();
 
   const step = Math.floor((LEVEL_DURATION - state.levelTime) / DENSITY_INTERVAL);
   if (step > state.densityStep) {
     state.densityStep = step;
-    phaseEl.textContent = `Kuşatma sertleşiyor! Yoğunluk ${state.densityStep}/4.`;
+    ui.phase.textContent = `Kuşatma yoğunluğu arttı (${step}/4)!`;
   }
 
-  const spawnRate = Math.max(0.2, 1.55 - state.level * 0.045 - state.densityStep * 0.31);
+  const spawnRate = Math.max(0.25, 1.6 - state.level * 0.04 - state.densityStep * 0.3);
   state.spawnTick += dt;
   while (state.spawnTick >= spawnRate) {
     state.spawnTick -= spawnRate;
-    const batch = 1 + state.densityStep;
-    for (let i = 0; i < batch; i += 1) spawnEnemy();
+    for (let i = 0; i < 1 + state.densityStep; i += 1) spawnEnemy();
   }
 
-  state.castle.defenseCooldown -= dt;
-  if (state.castle.defenseCooldown <= 0) {
-    shootDefenses();
-    state.castle.defenseCooldown = Math.max(0.16, 0.82 - state.castle.archers * 0.02 - state.castle.towers * 0.03);
+  state.castle.cooldown -= dt;
+  if (state.castle.cooldown <= 0) {
+    castleFire();
+    state.castle.cooldown = Math.max(0.2, 0.9 - state.castle.archers * 0.02);
   }
 
-  state.enemies.forEach((enemy) => {
-    const chillFactor = enemy.chilled > 0 ? 0.72 : 1;
-    enemy.x -= enemy.speed * chillFactor * dt;
-    enemy.chilled = Math.max(0, enemy.chilled - dt);
+  state.enemies.forEach((e) => {
+    const chill = e.chilled > 0 ? 0.72 : 1;
+    e.mesh.position.x -= e.speed * chill * dt;
+    e.chilled = Math.max(0, e.chilled - dt);
 
-    if (enemy.x <= state.castle.x + 180) {
-      const mitigation = Math.min(0.55, state.castle.knights * 0.06 + state.castle.gateArmor * 0.08 + state.castle.moatLevel * 0.05);
-      state.castle.hp -= enemy.damage * dt * (1 - mitigation);
+    if (e.mesh.position.x <= -150) {
+      const mitigation = Math.min(0.55, state.castle.knights * 0.07);
+      state.castle.hp -= e.damage * dt * (1 - mitigation);
     }
   });
 
   state.projectiles.forEach((p) => {
-    const dx = p.tx - p.x;
-    const dy = p.ty - p.y;
-    const len = Math.hypot(dx, dy) || 1;
-    p.x += (dx / len) * p.speed * dt;
-    p.y += (dy / len) * p.speed * dt;
-  });
-
-  for (const p of state.projectiles) {
-    const hit = state.enemies.find((e) => Math.hypot(p.x - e.x, p.y - (e.y - e.size)) < e.size + p.radius);
-    if (!hit) continue;
-
-    hit.hp -= p.damage;
-    if (p.chill) hit.chilled = Math.max(hit.chilled, 1.2);
-
-    if (p.splash) {
-      state.enemies.forEach((e) => {
-        if (Math.hypot(e.x - hit.x, e.y - hit.y) < p.splash) {
-          e.hp -= p.damage * 0.45;
-          if (p.chill) e.chilled = Math.max(e.chilled, 0.9);
-        }
-      });
-    }
-
-    if (p.pierce && p.pierce > 0) {
-      p.pierce -= 1;
-      p.damage *= 0.75;
-    } else {
+    if (!p.target || !state.enemies.includes(p.target)) { p.dead = true; return; }
+    const dir = new THREE.Vector3().subVectors(p.target.mesh.position, p.mesh.position);
+    const dist = dir.length();
+    if (dist < 2.3) {
+      p.target.hp -= p.damage;
+      if (p.chill) p.target.chilled = 1.2;
+      if (p.splash > 0) {
+        state.enemies.forEach((e) => {
+          if (e === p.target) return;
+          const d = e.mesh.position.distanceTo(p.target.mesh.position);
+          if (d < p.splash) {
+            e.hp -= p.damage * 0.45;
+            if (p.chill) e.chilled = 0.9;
+          }
+        });
+      }
       p.dead = true;
+      return;
     }
-  }
-
-  for (const c of state.clickBursts) {
-    state.enemies.forEach((e) => {
-      const d = Math.hypot(c.x - e.x, c.y - (e.y - e.size));
-      if (d < state.player.splashRadius) e.hp -= state.player.clickDamage;
-      if (state.player.meteorUnlocked && d < state.player.splashRadius + 45) e.hp -= state.player.clickDamage * 0.6;
-    });
-  }
-  state.clickBursts.length = 0;
+    dir.normalize();
+    p.mesh.position.addScaledVector(dir, p.speed * dt);
+  });
 
   state.enemies = state.enemies.filter((e) => {
     if (e.hp <= 0) {
-      state.gold += 14 + Math.floor(e.maxHp * 0.08);
+      state.gold += 12 + Math.floor(e.maxHp * 0.08);
+      enemyGroup.remove(e.mesh);
       return false;
     }
-    return e.x > -90;
+    if (e.mesh.position.x < -280) {
+      enemyGroup.remove(e.mesh);
+      return false;
+    }
+    return true;
   });
 
-  state.projectiles = state.projectiles.filter((p) => !p.dead && p.x > -30 && p.x < canvas.width + 40);
+  state.projectiles = state.projectiles.filter((p) => {
+    if (p.dead) {
+      projectileGroup.remove(p.mesh);
+      return false;
+    }
+    return true;
+  });
 
   if (state.castle.hp <= 0) {
     state.castle.hp = 0;
     state.gameOver = true;
-    phaseEl.textContent = `Kale düştü ${state.playerName}! Tekrar toplan ve yeniden dene.`;
+    ui.phase.textContent = `Kale düştü ${state.playerName}!`;
   }
 }
 
-function render() {
-  drawWorld();
-  drawCastle();
-  state.enemies.forEach(drawEnemy);
-
-  state.projectiles.forEach((p) => {
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
-canvas.addEventListener('click', (event) => {
-  if (!state.started || state.gameOver) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-  const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-  state.clickBursts.push({ x, y });
-});
-
-document.querySelectorAll('.market button').forEach((button) => {
-  button.addEventListener('click', () => {
-    if (!state.started || state.gameOver) return;
-
-    const upgrade = upgrades[button.dataset.upgrade];
-    if (!upgrade) return;
-
-    if (state.gold < upgrade.cost) {
-      phaseEl.textContent = `Yetersiz altın ${state.playerName}!`;
-      return;
-    }
-
-    state.gold -= upgrade.cost;
-    upgrade.apply();
-    phaseEl.textContent = `${button.textContent.split('(')[0].trim()} satın alındı.`;
-  });
-});
-
-startBtn.addEventListener('click', () => {
-  state.playerName = playerNameInput.value.trim() || 'Komutan';
+ui.startBtn.addEventListener('click', () => {
+  state.playerName = ui.playerNameInput.value.trim() || 'Komutan';
   state.started = true;
-  startOverlay.classList.add('hidden');
-  phaseEl.textContent = `Hoş geldin ${state.playerName}! Fantastik kuşatma başlıyor.`;
+  ui.startOverlay.classList.add('hidden');
+  ui.phase.textContent = `Hoş geldin ${state.playerName}! 3D kuşatma başladı.`;
 });
+
+camera.position.set(-40, 70, 130);
+camera.lookAt(-140, 25, 0);
 
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   update(dt);
-  render();
   updateHud();
+  applyCamera(dt);
+  renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
 
