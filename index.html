@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kale Savunması: Krallığın Son Kalesi</title>
+    <title>Kale Savunması: Efsanevi Kuşatma</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div id="startOverlay" class="overlay">
       <div class="overlay-card">
-        <h1>Krallığın Son Kalesi</h1>
-        <p>Komutan adını gir ve kaleyi savunmaya başla.</p>
+        <h1>Efsanevi Kuşatma</h1>
+        <p>Komutan adını yaz, ortaçağ kaleni fantastik canavarlara karşı savun.</p>
         <input id="playerNameInput" type="text" maxlength="24" placeholder="Komutan adı" />
-        <button id="startBtn">Oyunu Başlat</button>
+        <button id="startBtn">Savaşı Başlat</button>
       </div>
     </div>
 
@@ -21,36 +21,46 @@
         <span id="playerName">Komutan: -</span>
         <span id="level">Seviye: 1</span>
         <span id="time">Kalan Süre: 60</span>
-        <span id="gold">Altın: 250</span>
-        <span id="castleHp">Kale Canı: 1300 / 1300</span>
+        <span id="gold">Altın: 350</span>
+        <span id="castleHp">Kale Canı: 2200 / 2200</span>
       </div>
-      <div id="phase" class="phase">Hazır ol komutan!</div>
+      <div id="phase" class="phase">Savaş öncesi hazırlık yapılıyor...</div>
     </div>
 
     <main>
-      <canvas id="gameCanvas" width="1600" height="700"></canvas>
+      <canvas id="gameCanvas" width="1900" height="820"></canvas>
+
       <aside class="market">
-        <h2>Kale Pazarı</h2>
-        <p>Kaleyi güçlendir, savunma hatlarını genişlet.</p>
+        <h2>Kraliyet Marketi</h2>
+        <p>Kaleyi büyüt, birimlerini çoğalt, kuşatmayı kır.</p>
 
         <section class="market-section">
-          <h3>Kale Yükseltmeleri</h3>
-          <button data-upgrade="turret">Okçu Kulesi +1 (140 Altın)</button>
-          <button data-upgrade="cannon">Top Hasarı +25 (180 Altın)</button>
-          <button data-upgrade="wall">Surlar +350 Can (220 Altın)</button>
+          <h3>Kale ve Sur</h3>
+          <button data-upgrade="wall">Ana Surlar +500 Can (260)</button>
+          <button data-upgrade="moat">Hendek Derinleştir (220)</button>
+          <button data-upgrade="reinforce">Demir Kapı Güçlendirme (280)</button>
         </section>
 
         <section class="market-section">
-          <h3>Komutan Saldırısı</h3>
-          <button data-upgrade="click">Mouse Saldırısı +20 (130 Altın)</button>
-          <button data-upgrade="splash">Patlayan Ok Etkisi +14 (170 Altın)</button>
+          <h3>Menzilli Savunma</h3>
+          <button data-upgrade="archer">Okçu Birliği +1 (170)</button>
+          <button data-upgrade="ballista">Balista Kur (260)</button>
+          <button data-upgrade="catapult">Mancınık Kur (300)</button>
+          <button data-upgrade="tower">Kule Topu +1 (210)</button>
         </section>
 
         <section class="market-section">
-          <h3>Mancınık ve Savunmacılar</h3>
-          <button data-upgrade="catapult">Mancınık Kur (260 Altın)</button>
-          <button data-upgrade="guard">Kapı Muhafızı Ekle (210 Altın)</button>
-          <button data-upgrade="catapultDamage">Mancınık Hasarı +30 (190 Altın)</button>
+          <h3>Yakın Dövüş ve Büyü</h3>
+          <button data-upgrade="knight">Şövalye Muhafız +1 (190)</button>
+          <button data-upgrade="mage">Büyücü Muhafız +1 (260)</button>
+          <button data-upgrade="frost">Buz Büyüsü (düşman yavaşlatma) (240)</button>
+        </section>
+
+        <section class="market-section">
+          <h3>Komutan Güçleri</h3>
+          <button data-upgrade="click">Mouse Saldırısı +24 (160)</button>
+          <button data-upgrade="splash">Patlama Yarıçapı +18 (180)</button>
+          <button data-upgrade="meteor">Meteor Çağırma Aç (320)</button>
         </section>
       </aside>
     </main>
