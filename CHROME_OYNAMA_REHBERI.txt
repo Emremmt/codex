@@ -1,8 +1,16 @@
 Kale Savunması - Chrome Oynama Rehberi
 
-Python YOKSA hızlı seçenekler:
+Java ile açmak (JDK 18+):
+1) Proje klasörüne gir:
+   cd /workspace/codex
+2) Java'nın web sunucusunu başlat:
+   jwebserver -p 8000
+3) Chrome'da aç:
+   http://127.0.0.1:8000
 
-Seçenek A) Node.js varsa (önerilen)
+Python YOKSA diğer seçenekler:
+
+Seçenek A) Node.js varsa
 1) Proje klasörüne gir:
    cd /workspace/codex
 2) Sunucuyu başlat:
@@ -28,3 +36,4 @@ Python VARSA klasik yöntem:
 Notlar:
 - Oyun dosyalarını çift tıklayıp direkt açmak yerine local server ile çalıştır.
 - Oyun açılınca komutan adını yazıp "Oyunu Başlat" butonuna bas.
+- `jwebserver` komutu bulunamazsa JDK sürümünü kontrol et (JDK 18+ gerekir).

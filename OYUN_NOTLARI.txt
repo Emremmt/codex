@@ -1,19 +1,18 @@
 Kale Savunması Oyunu
 
-Tarayıcıda oynamak için (Python YOKSA):
+Tarayıcıda oynamak için (Java ile):
 1) Bu klasörde terminal aç.
-2) npx serve . -l 8000
+2) jwebserver -p 8000
 3) Tarayıcıdan http://127.0.0.1:8000 adresine git.
 
-Alternatif (VS Code):
-- Live Server eklentisi ile index.html dosyasını local sunucuda aç.
-
-Python varsa klasik yöntem:
-1) python3 -m http.server 8000
-2) http://127.0.0.1:8000
+Alternatifler:
+- Node.js: npx serve . -l 8000
+- VS Code: Live Server ile index.html dosyasını local sunucuda aç.
+- Python: python3 -m http.server 8000
 
 Notlar:
 - Oyuna başlamadan önce komutan adını gir.
 - Her seviye 60 saniye sürer, 15 saniyede bir düşman yoğunluğu artar.
 - Seviye sonunda altın kazanırsın ve tebrik mesajı görünür.
 - Marketten kule/top/mancınık/muhafız ve saldırı geliştirmeleri alabilirsin.
+- `jwebserver` için JDK 18+ gerekir.
