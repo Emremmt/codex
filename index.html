@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gece Defteri | Gotik Blog</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="fog fog--one"></div>
+    <div class="fog fog--two"></div>
+
+    <header class="hero">
+      <p class="hero__eyebrow">Karanlıkta yazılan notlar</p>
+      <h1>Gece Defteri</h1>
+      <p class="hero__lead">
+        Gölgeyi sevenler için minimal, gotik ve kişisel bir blog şablonu.
+      </p>
+    </header>
+
+    <main class="layout">
+      <section class="posts" id="post-list" aria-label="Blog yazıları">
+        <article class="post-card">
+          <h2>Ay Işığında Yalnızlık</h2>
+          <p class="meta">24 Nisan 2026 • Ruh Hâli</p>
+          <p>
+            Sessiz bir gece, taş duvarlara vuran yağmur ve yalnızca klavyenin sesi...
+            Bazen en iyi fikirler, şehrin sustuğu anlarda gelir.
+          </p>
+          <a href="#" class="read-more">Devamını oku</a>
+        </article>
+
+        <article class="post-card">
+          <h2>Eski Kütüphanelerin Kokusu</h2>
+          <p class="meta">20 Nisan 2026 • İlham</p>
+          <p>
+            Tozlu raflar arasında dolaşmak, farklı çağlardan sesler duymak gibidir.
+            Her sayfa, başka bir kapıya açılır.
+          </p>
+          <a href="#" class="read-more">Devamını oku</a>
+        </article>
+
+        <article class="post-card">
+          <h2>Gri Şehirde Siyah Şemsiye</h2>
+          <p class="meta">15 Nisan 2026 • Gözlem</p>
+          <p>
+            Kalabalık içinde kaybolurken bazen tek bir detay bütün hikâyeyi anlatır.
+            Benim için o detay: yağmurlu günlerde siyah şemsiyeler.
+          </p>
+          <a href="#" class="read-more">Devamını oku</a>
+        </article>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel">
+          <h3>Hakkımda</h3>
+          <p>
+            Koyu tonları seven bir yazar. Burada gece, melankoli, sanat ve günlük
+            ilham notları paylaşıyorum.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h3>Yeni Yazı Ekle</h3>
+          <form id="new-post-form">
+            <label for="title">Başlık</label>
+            <input id="title" name="title" type="text" required />
+
+            <label for="category">Kategori</label>
+            <input id="category" name="category" type="text" placeholder="Ruh Hâli" required />
+
+            <label for="content">Kısa İçerik</label>
+            <textarea id="content" name="content" rows="4" required></textarea>
+
+            <button type="submit">Yazıyı Ekle</button>
+          </form>
+        </section>
+      </aside>
+    </main>
+
+    <footer>
+      <p>© 2026 Gece Defteri • Karanlık güzeldir.</p>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
