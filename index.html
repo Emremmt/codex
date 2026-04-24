@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poligon Shooter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Poligon Shooter: WWII + Modern Arsenal</h1>
+        <p>
+          10 atış = 1 tur. Her tur +$1 ödül, her 3 ardışık isabet +$1 bonus.
+          Her 5 başarılı atışta hedef uzaklaşır.
+        </p>
+        <p class="hint">
+          Fare ile nişan al, sağ tık basılı tutarak ADS yap. Silahı masadan al (E).
+        </p>
+      </header>
+
+      <section class="hud">
+        <div><strong>Zorluk:</strong> <span id="difficultyLabel">Orta</span></div>
+        <div><strong>Tur:</strong> <span id="round">1</span></div>
+        <div><strong>Atış:</strong> <span id="shots">0</span>/10</div>
+        <div><strong>İsabet:</strong> <span id="hits">0</span></div>
+        <div><strong>Ardışık:</strong> <span id="streak">0</span></div>
+        <div><strong>Mesafe:</strong> <span id="distance">25</span>m</div>
+        <div><strong>Mermi:</strong> <span id="ammo">0</span>/<span id="magSize">0</span></div>
+        <div><strong>Bakiye:</strong> $<span id="money">0</span></div>
+        <div><strong>Ceza:</strong> <span id="penalty">0</span></div>
+      </section>
+
+      <section class="controls">
+        <label>
+          Başlangıç Zorluğu
+          <select id="difficultySelect">
+            <option value="easy">Kolay</option>
+            <option value="medium" selected>Orta</option>
+            <option value="hard">Zor</option>
+          </select>
+        </label>
+
+        <button id="pickupBtn">Silahı Al (E)</button>
+        <button id="reloadBtn">Şarjör Değiştir (R)</button>
+      </section>
+
+      <section class="arsenal">
+        <h2>Masa Üstü Silahlar</h2>
+        <div id="weaponRack" class="weapon-rack"></div>
+      </section>
+
+      <section class="range-wrap">
+        <canvas id="rangeCanvas" width="1920" height="1080"></canvas>
+      </section>
+
+      <section class="log-section">
+        <h2>Oyun Günlüğü</h2>
+        <ul id="log"></ul>
+      </section>
+    </div>
+
+    <div id="intermission" class="intermission hidden">
+      <div class="intermission-card">
+        <h2>Tur Bitti</h2>
+        <p>Bir sonraki tura geçmeden önce mağaza ekranını kullanabilirsin.</p>
+        <div class="tab-row">
+          <button id="tabWeapon" class="active">🛒 Silah Mağazası</button>
+          <button id="tabCosmetic">🎨 Kozmetik</button>
+        </div>
+        <div id="weaponStore" class="store-grid"></div>
+        <div id="cosmeticStore" class="store-grid hidden"></div>
+        <button id="nextRoundBtn" class="next-btn">Sonraki Tura Geç</button>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
