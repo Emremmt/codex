@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nova Dominion 2K</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="starfield"></canvas>
+  <main class="hud">
+    <header>
+      <h1>✦ Nova Dominion // 2K Command Grid ✦</h1>
+      <div id="meta"></div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Kaynaklar</h2>
+        <div id="resources"></div>
+        <button id="nextTurn">Sonraki Tur</button>
+      </article>
+
+      <article class="panel">
+        <h2>Görev Kuyruğu</h2>
+        <div id="missions"></div>
+        <div id="missionClock" class="warn"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Officers / Commander</h2>
+        <div id="officers"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Gezegenler</h2>
+        <div id="planets"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Binalar</h2>
+        <div id="buildings"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Araştırma</h2>
+        <div id="research"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Filo</h2>
+        <div id="units"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Savunma</h2>
+        <div id="defenses"></div>
+      </article>
+
+      <article class="panel">
+        <h2>Marketplace</h2>
+        <div id="market"></div>
+      </article>
+
+      <article class="panel wide">
+        <h2>İttifak & Mesajlaşma</h2>
+        <div class="row3">
+          <div>
+            <strong>İttifak</strong>
+            <div id="alliance"></div>
+            <button id="createAllianceBtn">İttifak Kur</button>
+            <button id="inviteBotBtn">Bot Davet Et</button>
+          </div>
+          <div>
+            <strong>Mesaj Gönder</strong>
+            <div class="line">
+              <label>Alıcı</label>
+              <select id="messageTo"></select>
+            </div>
+            <input id="messageInput" placeholder="Mesajın..." />
+            <button id="sendMessageBtn">Gönder</button>
+          </div>
+          <div>
+            <strong>Mesaj Kutusu</strong>
+            <div id="messages"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel wide">
+        <h2>İttifak Savaşları & Ticaret Sözleşmeleri</h2>
+        <div class="row3">
+          <div>
+            <strong>İttifak Savaşı</strong>
+            <div class="line"><label>Rakip İttifak</label><select id="warTargetAlliance"></select></div>
+            <button id="declareWarBtn">Savaş İlan Et</button>
+            <div id="wars"></div>
+          </div>
+          <div>
+            <strong>Ticaret Sözleşmesi</strong>
+            <div class="line"><label>Bot</label><select id="contractBot"></select></div>
+            <button id="createContractBtn">Sözleşme Oluştur</button>
+            <div id="contracts"></div>
+          </div>
+          <div>
+            <strong>Save / Load</strong>
+            <button id="saveBtn">Kaydet (Local)</button>
+            <button id="loadBtn">Yükle (Local)</button>
+            <button id="exportBtn">Dışa Aktar</button>
+            <button id="importBtn">İçe Aktar</button>
+            <textarea id="saveData" rows="7" placeholder="JSON save verisi"></textarea>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel wide">
+        <h2>Savaş Komutası</h2>
+        <div class="line"><label>Kaynak Gezegen</label><select id="sourcePlanet"></select></div>
+        <div class="line"><label>Hedef</label><select id="targetPlanet"></select></div>
+        <div class="line"><label>Görev</label><select id="missionType"><option>attack</option><option>transport</option><option>espionage</option><option>recycle</option></select></div>
+        <button id="launchMissionBtn">Görev Başlat (Süreli)</button>
+        <button id="colonizeBtn">Kolonileştir</button>
+        <button id="expeditionBtn">Sefer</button>
+        <pre id="battleLog"></pre>
+      </article>
+
+      <article class="panel wide">
+        <h2>Görev Raporları</h2>
+        <div id="reports"></div>
+      </article>
+
+      <article class="panel wide">
+        <h2>Ünite Hangarı (2K kart + animasyon)</h2>
+        <div id="unitGallery" class="gallery"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
