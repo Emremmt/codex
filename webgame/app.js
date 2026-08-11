@@ -53,6 +53,8 @@ const UNIT_ART = {
 
 const state = {
   turn: 1,
+  activePlanetId: null,
+  lastExpeditionTurn: -1,
   empires: [],
   planets: [],
   missions: [],
@@ -104,6 +106,8 @@ function mkPlanet(name, ownerId, neutral = false) {
 
 function initGame(botCount = 80) {
   state.turn = 1;
+  state.activePlanetId = null;
+  state.lastExpeditionTurn = -1;
   state.empires = [mkEmpire(0, false)];
   for (let i = 1; i <= botCount; i++) state.empires.push(mkEmpire(i, true));
   state.planets = [];
@@ -124,6 +128,7 @@ function initGame(botCount = 80) {
     p.ships.recycler = 1;
     p.def.rocket = 16;
     state.planets.push(p);
+    if (e.id === 0) state.activePlanetId = p.id;
   });
   for (let i = 0; i < botCount * 2; i++) {
     const p = mkPlanet(`${names[r(0, names.length - 1)]}-N${i}`, -1, true);
@@ -135,6 +140,25 @@ function initGame(botCount = 80) {
 
 const emp = id => state.empires.find(x => x.id === id);
 const planetsOf = id => state.planets.filter(p => p.ownerId === id);
+
+function activePlanet(ownerId = 0) {
+  const selected = state.planets.find(p => p.id === state.activePlanetId && p.ownerId === ownerId);
+  const fallback = selected || planetsOf(ownerId)[0] || null;
+  if (ownerId === 0 && fallback) state.activePlanetId = fallback.id;
+  return fallback;
+}
+
+function selectActivePlanet(planetId) {
+  const planet = state.planets.find(p => p.id === planetId && p.ownerId === 0);
+  if (!planet) return false;
+  state.activePlanetId = planet.id;
+  render();
+  return true;
+}
+
+function playerEliminated() {
+  return planetsOf(0).length === 0;
+}
 
 function tech(id) {
   const t = emp(id)?.research || {};
@@ -188,18 +212,75 @@ function travelTurns(from, to, ownerId) {
   return Math.max(1, Math.ceil((d / (110 * speed))));
 }
 
-function launchMission(type, fromId, toId, ownerId, now = Date.now()) {
+const MISSION_FLEET_RULES = {
+  attack: k => !["colonyShip", "recycler", "probe"].includes(k),
+  transport: k => !["colonyShip", "recycler", "probe"].includes(k) && SHIPS[k].cargo > 0,
+  espionage: k => k === "probe",
+  recycle: k => k === "recycler",
+};
+
+function validMissionTarget(type, from, to, ownerId) {
+  if (!from || !to || from.id === to.id) return false;
+  if (type === "transport") return to.ownerId === ownerId;
+  return to.ownerId !== ownerId;
+}
+
+function missionTargets(type, fromId, ownerId = 0) {
+  const from = state.planets.find(p => p.id === fromId);
+  return state.planets.filter(to => validMissionTarget(type, from, to, ownerId));
+}
+
+function missionFleet(type, from, requestedFleet = null) {
+  const allowed = MISSION_FLEET_RULES[type];
+  const fleet = Object.fromEntries(Object.keys(from.ships).map(k => [k, 0]));
+  if (!allowed) return fleet;
+
+  if (requestedFleet) {
+    Object.keys(fleet).forEach(k => {
+      if (!allowed(k)) return;
+      fleet[k] = clamp(Math.floor(Number(requestedFleet[k]) || 0), 0, from.ships[k]);
+    });
+    return fleet;
+  }
+
+  if (type === "espionage") fleet.probe = Math.min(1, from.ships.probe || 0);
+  else if (type === "recycle") fleet.recycler = Math.min(1, from.ships.recycler || 0);
+  else Object.keys(fleet).forEach(k => { if (allowed(k)) fleet[k] = Math.floor(from.ships[k] * 0.55); });
+  return fleet;
+}
+
+function fleetCargoCapacity(fleet) {
+  return Object.entries(fleet).reduce((sum, [k, amount]) => sum + amount * (SHIPS[k]?.cargo || 0), 0);
+}
+
+function transportCargo(from, fleet, requested = {}) {
+  let remaining = fleetCargoCapacity(fleet);
+  const cargo = { metal: 0, crystal: 0, deuterium: 0 };
+  RES.forEach(k => {
+    const wanted = Math.max(0, Math.floor(Number(requested[k]) || 0));
+    cargo[k] = Math.min(wanted, from.resources[k], remaining);
+    remaining -= cargo[k];
+  });
+  return cargo;
+}
+
+function launchMission(type, fromId, toId, ownerId, now = Date.now(), options = {}) {
   const from = state.planets.find(p => p.id === fromId);
   const to = state.planets.find(p => p.id === toId);
   if (!from || !to || from.ownerId !== ownerId) return "Görev başlatılamadı.";
   if (!["attack", "espionage", "transport", "recycle"].includes(type)) return "Geçersiz görev türü.";
+  if (!validMissionTarget(type, from, to, ownerId)) return "Bu görev için hedef uygun değil.";
 
-  const fleet = {};
-  Object.keys(from.ships).forEach(k => {
-    fleet[k] = Math.floor(from.ships[k] * 0.55);
-    from.ships[k] -= fleet[k];
-  });
+  const fleet = missionFleet(type, from, options.fleet);
   if (Object.values(fleet).reduce((a, b) => a + b, 0) <= 0) return "Gönderilecek filo yok.";
+
+  const cargo = type === "transport"
+    ? transportCargo(from, fleet, options.cargo || { metal: 2500, crystal: 1500, deuterium: 800 })
+    : { metal: 0, crystal: 0, deuterium: 0 };
+  if (type === "transport" && RES.every(k => cargo[k] === 0)) return "Taşınacak kaynak veya yeterli kargo kapasitesi yok.";
+
+  Object.keys(fleet).forEach(k => { from.ships[k] -= fleet[k]; });
+  if (type === "transport") RES.forEach(k => { from.resources[k] -= cargo[k]; });
 
   const eta = state.turn + travelTurns(from, to, ownerId);
   const durationSec = travelTurns(from, to, ownerId) * 25;
@@ -210,7 +291,7 @@ function launchMission(type, fromId, toId, ownerId, now = Date.now()) {
     fromId,
     toId,
     fleet,
-    cargo: { metal: 0, crystal: 0, deuterium: 0 },
+    cargo,
     phase: "outbound",
     eta,
     etaMs: now + durationSec * 1000,
@@ -314,7 +395,7 @@ function processMissions(now = Date.now()) {
     if (!missionReady(m.eta, m.etaMs, now)) return;
     const from = state.planets.find(p => p.id === m.fromId);
     const to = state.planets.find(p => p.id === m.toId);
-    if (!from || !to || from.ownerId !== m.ownerId) {
+    if (!from || !to) {
       m.done = true;
       reportMission(`Görev İptal (${m.type})`, "Kaynak veya hedef gezegen artık geçerli olmadığı için görev iptal edildi.");
       return;
@@ -343,15 +424,17 @@ function processMissions(now = Date.now()) {
         });
       }
       if (m.type === "transport") {
-        const take = { metal: 2500, crystal: 1500, deuterium: 800 };
-        const src = from.resources;
-        const real = { metal: Math.min(src.metal, take.metal), crystal: Math.min(src.crystal, take.crystal), deuterium: Math.min(src.deuterium, take.deuterium) };
-        RES.forEach(k => { src[k] -= real[k]; to.resources[k] += real[k]; });
-        state.missionReports.unshift({
-          turn: state.turn,
-          title: `Taşıma Raporu`,
-          detail: `${from.name} -> ${to.name} | M:${real.metal} C:${real.crystal} D:${real.deuterium}`,
-        });
+        if (to.ownerId === m.ownerId) {
+          const delivered = { ...m.cargo };
+          RES.forEach(k => { to.resources[k] += delivered[k]; m.cargo[k] = 0; });
+          state.missionReports.unshift({
+            turn: state.turn,
+            title: "Taşıma Raporu",
+            detail: `${from.name} -> ${to.name} | M:${delivered.metal} C:${delivered.crystal} D:${delivered.deuterium}`,
+          });
+        } else {
+          reportMission("Taşıma Başarısız", `${to.name} artık sana ait olmadığı için kaynaklar filoyla geri dönüyor.`);
+        }
       }
       if (m.type === "recycle") {
         const bonus = r(3000, 12000);
@@ -398,6 +481,7 @@ function botTurn(e) {
 }
 
 function nextTurn() {
+  if (playerEliminated()) { render(); return; }
   state.planets.forEach(ecoTick);
   state.empires.filter(x => x.isBot && planetsOf(x.id).length).forEach(botTurn);
   processMissions();
@@ -408,7 +492,8 @@ function nextTurn() {
 }
 
 function buyBuilding(key) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   const c = resCost(BUILDINGS[key].b, BUILDINGS[key].f, p.b[key]);
   if (pay(p.resources, c)) { p.b[key]++; log(`${BUILDINGS[key].n} ${p.b[key]} oldu.`); }
   else log("Kaynak yetmedi.");
@@ -416,7 +501,8 @@ function buyBuilding(key) {
 }
 
 function buyResearch(key) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   const e = emp(0);
   if (p.b.lab < 2) return log("Lab seviye 2 olmalı.");
   const c = resCost(RESEARCH[key].b, RESEARCH[key].f, e.research[key]);
@@ -426,7 +512,8 @@ function buyResearch(key) {
 }
 
 function buyShip(key) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   const e = emp(0);
   if (SHIPS[key].unique && e.uniqueBuilt[key]) return log("Unique ünite bir kez üretilebilir.");
   if (pay(p.resources, SHIPS[key].c)) {
@@ -438,14 +525,16 @@ function buyShip(key) {
 }
 
 function buyDefense(key) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   if (pay(p.resources, DEF[key].c)) { p.def[key] += 1; log(`${DEF[key].n} kuruldu.`); }
   else log("Kaynak yetmedi.");
   render();
 }
 
 function hireOfficer(k) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   const e = emp(0);
   if (e.officers[k]) return log("Officer zaten aktif.");
   if (pay(p.resources, OFFICERS[k].c)) { e.officers[k] = true; log(`${OFFICERS[k].n} aktif edildi.`); }
@@ -454,7 +543,8 @@ function hireOfficer(k) {
 }
 
 function trade(mode) {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Yönetilecek gezegen kalmadı.");
   if (mode === "m2c") {
     const metal = 5000;
     const crystal = Math.floor(metal / state.market.metalToCrystal);
@@ -539,7 +629,8 @@ function createTradeContract() {
 }
 
 function processTradeContracts() {
-  const home = planetsOf(0)[0];
+  const home = activePlanet();
+  if (!home) return;
   state.tradeContracts.forEach(c => {
     if (!c.active || state.turn < c.nextTurn) return;
     if (can(home.resources, c.give)) {
@@ -582,12 +673,20 @@ function saveGame() {
   render();
 }
 
+function normalizeLoadedState() {
+  state.activePlanetId = state.planets.some(p => p.id === state.activePlanetId && p.ownerId === 0)
+    ? state.activePlanetId
+    : (planetsOf(0)[0]?.id || null);
+  if (!Number.isFinite(state.lastExpeditionTurn)) state.lastExpeditionTurn = -1;
+}
+
 function loadGame() {
   const raw = localStorage.getItem("nova_dominion_save");
   if (!raw) return log("Kayıt bulunamadı.");
   try {
     const parsed = JSON.parse(raw);
     Object.assign(state, parsed);
+    normalizeLoadedState();
     log("Kayıt yüklendi.");
     render();
   } catch {
@@ -606,6 +705,7 @@ function importSave() {
   try {
     const parsed = JSON.parse(raw);
     Object.assign(state, parsed);
+    normalizeLoadedState();
     log("Save verisi içe aktarıldı.");
     render();
   } catch {
@@ -617,25 +717,51 @@ function launchFromUI() {
   const fromId = document.getElementById("sourcePlanet").value;
   const toId = document.getElementById("targetPlanet").value;
   const type = document.getElementById("missionType").value;
-  log(launchMission(type, fromId, toId, 0));
+  const cargo = type === "transport" ? {
+    metal: document.getElementById("cargoMetal").value,
+    crystal: document.getElementById("cargoCrystal").value,
+    deuterium: document.getElementById("cargoDeuterium").value,
+  } : undefined;
+  log(launchMission(type, fromId, toId, 0, Date.now(), { cargo }));
   render();
 }
 
-function colonize() {
-  const src = state.planets.find(p => p.id === document.getElementById("sourcePlanet").value);
+function maxPlayerPlanets() {
+  return 1 + Math.ceil((emp(0)?.research.astrophysics || 0) / 2);
+}
+
+function isColonizable(target) {
+  if (!target || target.ownerId !== -1) return false;
+  const stationed = Object.values(target.ships).reduce((a, b) => a + b, 0);
+  const defenses = Object.values(target.def).reduce((a, b) => a + b, 0);
+  return stationed + defenses === 0;
+}
+
+function colonize(sourceId, targetId) {
+  const srcId = sourceId || (typeof document !== "undefined" ? document.getElementById("sourcePlanet").value : null);
+  const dstId = targetId || (typeof document !== "undefined" ? document.getElementById("targetPlanet").value : null);
+  const src = state.planets.find(p => p.id === srcId && p.ownerId === 0);
+  const target = state.planets.find(p => p.id === dstId);
   if (!src || src.ships.colonyShip <= 0) return log("Koloni gemisi yok.");
-  const limit = 1 + Math.floor(emp(0).research.astrophysics / 2);
-  if (planetsOf(0).length > limit) return log("Astrofizik yükselt.");
-  const target = state.planets.find(p => p.ownerId === -1);
-  if (!target) return log("Boş gezegen yok.");
+  if (planetsOf(0).length >= maxPlayerPlanets()) return log("Koloni sınırı dolu; Astrofizik yükselt.");
+  if (!isColonizable(target)) return log("Seçilen hedef boş ve savunmasız bir nötr gezegen olmalı.");
   src.ships.colonyShip -= 1;
   target.ownerId = 0;
+  state.activePlanetId = target.id;
   log(`${target.name} kolonize edildi.`);
   render();
+  return true;
 }
 
 function expedition() {
-  const p = planetsOf(0)[0];
+  const p = activePlanet();
+  if (!p) return log("Sefer gönderecek gezegen kalmadı.");
+  if (state.lastExpeditionTurn === state.turn) return log("Bu tur sefer hakkını kullandın.");
+  if ((p.ships.lightFighter || 0) + (p.ships.cruiser || 0) + (p.ships.battleship || 0) <= 0) return log("Sefer için en az bir savaş gemisi gerekli.");
+  const fuel = 1000;
+  if (p.resources.deuterium < fuel) return log(`Sefer için ${fuel} deuterium gerekli.`);
+  p.resources.deuterium -= fuel;
+  state.lastExpeditionTurn = state.turn;
   const x = Math.random();
   if (x < 0.3) {
     const g = { metal: r(2000, 15000), crystal: r(1000, 9000), deuterium: r(800, 6000) };
@@ -651,6 +777,7 @@ function expedition() {
     log("Sefer sakin geçti.");
   }
   render();
+  return true;
 }
 
 function log(s) {
@@ -686,13 +813,52 @@ function renderGallery() {
   `).join("");
 }
 
+function refreshMissionTargets() {
+  if (typeof document === "undefined") return;
+  const src = document.getElementById("sourcePlanet");
+  const tgt = document.getElementById("targetPlanet");
+  const type = document.getElementById("missionType").value;
+  const previous = tgt.value;
+  const source = state.planets.find(p => p.id === src.value) || activePlanet();
+  const targets = missionTargets(type, source?.id, 0);
+
+  tgt.innerHTML = targets.map(x => {
+    const owner = x.ownerId === -1 ? "Nötr" : (emp(x.ownerId)?.name || "Bilinmiyor");
+    const eta = source ? travelTurns(source, x, 0) : 0;
+    return `<option value='${x.id}'>${x.name} [${x.coords.join(":")}] · ${owner} · Güç ${Math.floor(power(x))} · ${eta} tur</option>`;
+  }).join("") || "<option value=''>Uygun hedef yok</option>";
+  if (targets.some(x => x.id === previous)) tgt.value = previous;
+
+  const cargoFields = document.getElementById("transportCargoFields");
+  cargoFields.hidden = type !== "transport";
+}
+
 function render() {
-  const p = planetsOf(0)[0];
+  if (typeof document === "undefined") return;
+  const p = activePlanet();
   const me = emp(0);
   document.getElementById("meta").textContent = `Tur ${state.turn} | Bot ${state.empires.length - 1} | Mission ${state.missions.length}`;
+  const gameOver = document.getElementById("gameOver");
+  const grid = document.querySelector(".grid");
+  if (!p) {
+    gameOver.hidden = false;
+    grid.inert = true;
+    document.getElementById("gameOverText").textContent = `İmparatorluğun ${state.turn}. turda yıkıldı. Kayıttan devam edebilir veya sayfayı yenileyerek yeni oyun başlatabilirsin.`;
+    return;
+  }
+  gameOver.hidden = true;
+  grid.inert = false;
 
-  document.getElementById("resources").innerHTML = RES.map(k => `<div class='item'><span>${k}</span><strong>${p.resources[k].toLocaleString("tr-TR")}</strong></div>`).join("");
-  document.getElementById("planets").innerHTML = planetsOf(0).map(x => `<div class='item'><span>${x.name} [${x.coords.join(":")}] ${x.moon ? "🌙" : ""}</span><small>Güç ${Math.floor(power(x, 0))}</small></div>`).join("");
+  document.getElementById("resources").innerHTML = `<div class='active-world'>Aktif: <strong>${p.name}</strong></div>` + RES.map(k => `<div class='item'><span>${k}</span><strong>${p.resources[k].toLocaleString("tr-TR")}</strong></div>`).join("");
+  const planetList = document.getElementById("planets");
+  planetList.innerHTML = "";
+  planetsOf(0).forEach(x => {
+    const row = document.createElement("div");
+    row.className = `item planet-row${x.id === p.id ? " selected" : ""}`;
+    row.innerHTML = `<span>${x.name} [${x.coords.join(":")}] ${x.moon ? "🌙" : ""}<br><small>Güç ${Math.floor(power(x, 0))}</small></span><button type='button'>${x.id === p.id ? "Aktif" : "Yönet"}</button>`;
+    row.querySelector("button").onclick = () => selectActivePlanet(x.id);
+    planetList.appendChild(row);
+  });
 
   bindList("buildings", BUILDINGS, buyBuilding, k => `Lv ${p.b[k]} | ${JSON.stringify(resCost(BUILDINGS[k].b, BUILDINGS[k].f, p.b[k]))}`);
   bindList("research", RESEARCH, buyResearch, k => `Lv ${me.research[k]} | ${JSON.stringify(resCost(RESEARCH[k].b, RESEARCH[k].f, me.research[k]))}`);
@@ -718,10 +884,10 @@ function render() {
   document.getElementById("alliance").innerHTML = ally ? `${ally.name}<br>Üyeler: ${ally.members.map(id => emp(id).name).join(", ")}` : "İttifak yok";
 
   const src = document.getElementById("sourcePlanet");
-  const tgt = document.getElementById("targetPlanet");
+  const previousSource = src.value;
   src.innerHTML = planetsOf(0).map(x => `<option value='${x.id}'>${x.name} [${x.coords.join(":")}]</option>`).join("");
-  tgt.innerHTML = state.planets.filter(x => x.ownerId !== 0).slice(0, 100)
-    .map(x => `<option value='${x.id}'>${x.name} - ${x.ownerId === -1 ? "Nötr" : emp(x.ownerId).name}</option>`).join("");
+  src.value = planetsOf(0).some(x => x.id === previousSource) ? previousSource : p.id;
+  refreshMissionTargets();
 
   document.getElementById("messageTo").innerHTML = state.empires.filter(x => x.id !== 0).slice(0, 80)
     .map(x => `<option value='${x.id}'>${x.name}</option>`).join("");
@@ -807,8 +973,12 @@ function boot() {
 
   document.getElementById("nextTurn").onclick = nextTurn;
   document.getElementById("launchMissionBtn").onclick = launchFromUI;
-  document.getElementById("colonizeBtn").onclick = colonize;
+  document.getElementById("colonizeBtn").onclick = () => colonize();
   document.getElementById("expeditionBtn").onclick = expedition;
+  document.getElementById("sourcePlanet").onchange = refreshMissionTargets;
+  document.getElementById("missionType").onchange = refreshMissionTargets;
+  document.getElementById("newGameBtn").onclick = () => location.reload();
+  document.getElementById("gameOverLoadBtn").onclick = loadGame;
   document.getElementById("createAllianceBtn").onclick = createAlliance;
   document.getElementById("inviteBotBtn").onclick = inviteBot;
   document.getElementById("sendMessageBtn").onclick = sendMessage;
@@ -826,12 +996,24 @@ function boot() {
 const NOVA_TEST_API = {
   state,
   initGame,
+  activePlanet,
+  selectActivePlanet,
+  playerEliminated,
   launchMission,
   processMissions,
+  missionTargets,
+  missionFleet,
+  fleetCargoCapacity,
+  transportCargo,
   missionReady,
   returnDestination,
   travelTurns,
   resolveCombat,
+  buyBuilding,
+  colonize,
+  maxPlayerPlanets,
+  isColonizable,
+  expedition,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = NOVA_TEST_API;

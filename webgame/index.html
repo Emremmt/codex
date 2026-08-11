@@ -14,6 +14,13 @@
       <div id="meta"></div>
     </header>
 
+    <section id="gameOver" class="game-over" hidden>
+      <h2>İmparatorluk Düştü</h2>
+      <p id="gameOverText"></p>
+      <button id="gameOverLoadBtn" type="button">Kayıttan Yükle</button>
+      <button id="newGameBtn" type="button">Yeni Oyun</button>
+    </section>
+
     <section class="grid">
       <article class="panel">
         <h2>Kaynaklar</h2>
@@ -115,9 +122,14 @@
 
       <article class="panel wide">
         <h2>Savaş Komutası</h2>
-        <div class="line"><label>Kaynak Gezegen</label><select id="sourcePlanet"></select></div>
-        <div class="line"><label>Hedef</label><select id="targetPlanet"></select></div>
-        <div class="line"><label>Görev</label><select id="missionType"><option>attack</option><option>transport</option><option>espionage</option><option>recycle</option></select></div>
+        <div class="line"><label for="sourcePlanet">Kaynak Gezegen</label><select id="sourcePlanet"></select></div>
+        <div class="line"><label for="targetPlanet">Hedef</label><select id="targetPlanet"></select></div>
+        <div class="line"><label for="missionType">Görev</label><select id="missionType"><option value="attack">Saldırı</option><option value="transport">Taşıma</option><option value="espionage">Casusluk</option><option value="recycle">Enkaz toplama</option></select></div>
+        <div id="transportCargoFields" class="cargo-grid" hidden>
+          <label for="cargoMetal">Metal <input id="cargoMetal" type="number" inputmode="numeric" min="0" value="2500" /></label>
+          <label for="cargoCrystal">Kristal <input id="cargoCrystal" type="number" inputmode="numeric" min="0" value="1500" /></label>
+          <label for="cargoDeuterium">Deuterium <input id="cargoDeuterium" type="number" inputmode="numeric" min="0" value="800" /></label>
+        </div>
         <button id="launchMissionBtn">Görev Başlat (Süreli)</button>
         <button id="colonizeBtn">Kolonileştir</button>
         <button id="expeditionBtn">Sefer</button>

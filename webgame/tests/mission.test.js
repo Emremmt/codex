@@ -18,6 +18,7 @@ test("realtime ETA completes outbound and return legs without advancing turns", 
     game.initGame(2);
     const source = game.state.planets.find(p => p.ownerId === 0);
     const target = game.state.planets.find(p => p.ownerId === 1);
+    source.ships.probe = 1;
     const initialFleet = { ...source.ships };
 
     assert.match(game.launchMission("espionage", source.id, target.id, 0, 1_000), /Görev çıktı/);
@@ -76,8 +77,10 @@ test("mission processing does not crash after the owner loses every planet", () 
   game.state.planets.filter(p => p.ownerId === 0).forEach(p => { p.ownerId = 1; });
 
   assert.doesNotThrow(() => game.processMissions(mission.etaMs));
+  assert.equal(mission.phase, "returning");
+  assert.doesNotThrow(() => game.processMissions(mission.returnEtaMs));
   assert.equal(game.state.missions.length, 0);
-  assert.match(game.state.missionReports[0].title, /Görev İptal/);
+  assert.match(game.state.missionReports[0].title, /Filo Kaybı/);
 });
 
 test("legacy returning missions honor returnEtaMs", () => {
@@ -85,6 +88,7 @@ test("legacy returning missions honor returnEtaMs", () => {
     game.initGame(2);
     const source = game.state.planets.find(p => p.ownerId === 0);
     const target = game.state.planets.find(p => p.ownerId === 1);
+    source.ships.probe = 1;
     game.launchMission("espionage", source.id, target.id, 0, 1_000);
     const mission = game.state.missions[0];
     game.processMissions(mission.etaMs);
