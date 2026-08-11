@@ -2,7 +2,9 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#040815" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Nova Dominion 2K</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -14,7 +16,7 @@
       <div id="meta"></div>
     </header>
 
-    <section id="gameOver" class="game-over" hidden>
+    <section id="gameOver" class="game-over" role="alert" hidden>
       <h2>İmparatorluk Düştü</h2>
       <p id="gameOverText"></p>
       <button id="gameOverLoadBtn" type="button">Kayıttan Yükle</button>
@@ -22,7 +24,7 @@
     </section>
 
     <section class="grid">
-      <article class="panel">
+      <article id="overviewPanel" class="panel">
         <h2>Kaynaklar</h2>
         <div id="resources"></div>
         <button id="nextTurn">Sonraki Tur</button>
@@ -31,7 +33,7 @@
       <article class="panel">
         <h2>Görev Kuyruğu</h2>
         <div id="missions"></div>
-        <div id="missionClock" class="warn"></div>
+        <div id="missionClock" class="warn" aria-live="polite"></div>
       </article>
 
       <article class="panel">
@@ -39,12 +41,12 @@
         <div id="officers"></div>
       </article>
 
-      <article class="panel">
+      <article id="planetsPanel" class="panel">
         <h2>Gezegenler</h2>
         <div id="planets"></div>
       </article>
 
-      <article class="panel">
+      <article id="productionPanel" class="panel">
         <h2>Binalar</h2>
         <div id="buildings"></div>
       </article>
@@ -69,7 +71,7 @@
         <div id="market"></div>
       </article>
 
-      <article class="panel wide">
+      <article id="diplomacyPanel" class="panel wide">
         <h2>İttifak & Mesajlaşma</h2>
         <div class="row3">
           <div>
@@ -120,10 +122,13 @@
         </div>
       </article>
 
-      <article class="panel wide">
+      <article id="commandPanel" class="panel wide">
         <h2>Savaş Komutası</h2>
         <div class="line"><label for="sourcePlanet">Kaynak Gezegen</label><select id="sourcePlanet"></select></div>
+        <div class="line"><label for="targetSearch">Hedef Ara</label><input id="targetSearch" type="search" autocomplete="off" placeholder="Ad, koordinat veya sahip" /></div>
         <div class="line"><label for="targetPlanet">Hedef</label><select id="targetPlanet"></select></div>
+        <small id="targetSummary" class="muted"></small>
+        <div id="targetPreview" class="target-preview" aria-live="polite"></div>
         <div class="line"><label for="missionType">Görev</label><select id="missionType"><option value="attack">Saldırı</option><option value="transport">Taşıma</option><option value="espionage">Casusluk</option><option value="recycle">Enkaz toplama</option></select></div>
         <div id="transportCargoFields" class="cargo-grid" hidden>
           <label for="cargoMetal">Metal <input id="cargoMetal" type="number" inputmode="numeric" min="0" value="2500" /></label>
@@ -136,7 +141,7 @@
         <pre id="battleLog"></pre>
       </article>
 
-      <article class="panel wide">
+      <article id="reportsPanel" class="panel wide">
         <h2>Görev Raporları</h2>
         <div id="reports"></div>
       </article>
@@ -147,6 +152,14 @@
       </article>
     </section>
   </main>
+
+  <nav class="mobile-nav" aria-label="Hızlı erişim">
+    <button type="button" data-scroll-target="overviewPanel">Üs</button>
+    <button type="button" data-scroll-target="productionPanel">Üretim</button>
+    <button type="button" data-scroll-target="commandPanel">Komuta</button>
+    <button type="button" data-scroll-target="diplomacyPanel">İttifak</button>
+    <button type="button" data-scroll-target="reportsPanel">Rapor</button>
+  </nav>
 
   <script src="./app.js"></script>
 </body>

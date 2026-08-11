@@ -380,6 +380,7 @@ function finishMissionReturn(m) {
 }
 
 function processMissions(now = Date.now()) {
+  const before = state.missions.map(m => `${m.id}:${m.phase || "legacy"}:${Boolean(m.done)}`).join("|");
   state.missions.forEach(m => {
     if (m.done) return;
     // Eski save dosyalarında phase/cargo alanı yoktur; yüklenirken güvenli şekilde tamamla.
@@ -453,6 +454,8 @@ function processMissions(now = Date.now()) {
   });
   state.missions = state.missions.filter(m => !m.done);
   state.missionReports = state.missionReports.slice(0, 80);
+  const after = state.missions.map(m => `${m.id}:${m.phase}:${Boolean(m.done)}`).join("|");
+  return before !== after;
 }
 
 function botTurn(e) {
@@ -785,13 +788,17 @@ function log(s) {
   state.log = state.log.slice(0, 60);
 }
 
-function bindList(elId, map, onClick, formatter) {
+function formatCost(cost) {
+  return `M ${Math.floor(cost.metal || 0).toLocaleString("tr-TR")} · K ${Math.floor(cost.crystal || 0).toLocaleString("tr-TR")} · D ${Math.floor(cost.deuterium || 0).toLocaleString("tr-TR")}`;
+}
+
+function bindList(elId, map, onClick, formatter, actionLabel = "İşlem") {
   const el = document.getElementById(elId);
   el.innerHTML = "";
   Object.keys(map).forEach(k => {
     const d = document.createElement("div");
     d.className = "item";
-    d.innerHTML = `<span>${map[k].n}<br><small>${formatter(k)}</small></span><button>İşlem</button>`;
+    d.innerHTML = `<span>${map[k].n}<br><small>${formatter(k)}</small></span><button type="button">${actionLabel}</button>`;
     d.querySelector("button").onclick = () => onClick(k);
     el.appendChild(d);
   });
@@ -799,6 +806,7 @@ function bindList(elId, map, onClick, formatter) {
 
 function renderGallery() {
   const g = document.getElementById("unitGallery");
+  if (g.dataset.rendered === "true") return;
   const cards = [
     { k: "lightFighter", label: "Hafif Avcı" },
     { k: "cruiser", label: "Kruvazör" },
@@ -811,6 +819,7 @@ function renderGallery() {
       <small>ATK ${SHIPS[c.k].atk} | HP ${SHIPS[c.k].hp}</small>
     </div>
   `).join("");
+  g.dataset.rendered = "true";
 }
 
 function refreshMissionTargets() {
@@ -820,7 +829,16 @@ function refreshMissionTargets() {
   const type = document.getElementById("missionType").value;
   const previous = tgt.value;
   const source = state.planets.find(p => p.id === src.value) || activePlanet();
-  const targets = missionTargets(type, source?.id, 0);
+  const query = document.getElementById("targetSearch").value.trim().toLocaleLowerCase("tr-TR");
+  const allTargets = missionTargets(type, source?.id, 0);
+  const matched = allTargets
+    .filter(x => {
+      if (!query) return true;
+      const owner = x.ownerId === -1 ? "nötr" : (emp(x.ownerId)?.name || "");
+      return `${x.name} ${x.coords.join(":")} ${owner}`.toLocaleLowerCase("tr-TR").includes(query);
+    })
+    .sort((a, b) => (source ? distance(source, a) - distance(source, b) : 0));
+  const targets = matched.slice(0, 80);
 
   tgt.innerHTML = targets.map(x => {
     const owner = x.ownerId === -1 ? "Nötr" : (emp(x.ownerId)?.name || "Bilinmiyor");
@@ -828,9 +846,40 @@ function refreshMissionTargets() {
     return `<option value='${x.id}'>${x.name} [${x.coords.join(":")}] · ${owner} · Güç ${Math.floor(power(x))} · ${eta} tur</option>`;
   }).join("") || "<option value=''>Uygun hedef yok</option>";
   if (targets.some(x => x.id === previous)) tgt.value = previous;
+  document.getElementById("targetSummary").textContent = `${targets.length}/${matched.length} hedef gösteriliyor${matched.length > 80 ? " · aramayla daralt" : ""}`;
 
   const cargoFields = document.getElementById("transportCargoFields");
   cargoFields.hidden = type !== "transport";
+  renderTargetPreview();
+}
+
+function renderTargetPreview() {
+  if (typeof document === "undefined") return;
+  const source = state.planets.find(p => p.id === document.getElementById("sourcePlanet").value);
+  const target = state.planets.find(p => p.id === document.getElementById("targetPlanet").value);
+  const box = document.getElementById("targetPreview");
+  if (!source || !target) { box.textContent = "Hedef seçilmedi."; return; }
+  const owner = target.ownerId === -1 ? "Nötr" : (emp(target.ownerId)?.name || "Bilinmiyor");
+  box.textContent = `${owner} · Güç ${Math.floor(power(target)).toLocaleString("tr-TR")} · Mesafe ${Math.floor(distance(source, target))} · ETA ${travelTurns(source, target, 0)} tur`;
+}
+
+function renderMissionPanel(now = Date.now()) {
+  if (typeof document === "undefined") return;
+  const missions = document.getElementById("missions");
+  missions.innerHTML = state.missions.slice(0, 20).map(m => {
+    const deadline = m.phase === "returning" ? m.returnEtaMs : m.etaMs;
+    const remaining = Number.isFinite(deadline) ? formatCountdown(deadline - now) : "tur bekleniyor";
+    const phase = m.phase === "returning" ? "Dönüş" : "Gidiş";
+    return `<div class='item'><span>${m.type} · ${phase}</span><small>${remaining} · ${emp(m.ownerId)?.name || "Filo"}</small></div>`;
+  }).join("") || "Görev yok";
+
+  const next = state.missions
+    .map(m => (m.phase === "returning" ? m.returnEtaMs : m.etaMs) - now)
+    .filter(v => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b)[0];
+  document.getElementById("missionClock").textContent = next
+    ? `En yakın görev: ${formatCountdown(next)}`
+    : "Aktif geri sayım yok";
 }
 
 function render() {
@@ -860,11 +909,11 @@ function render() {
     planetList.appendChild(row);
   });
 
-  bindList("buildings", BUILDINGS, buyBuilding, k => `Lv ${p.b[k]} | ${JSON.stringify(resCost(BUILDINGS[k].b, BUILDINGS[k].f, p.b[k]))}`);
-  bindList("research", RESEARCH, buyResearch, k => `Lv ${me.research[k]} | ${JSON.stringify(resCost(RESEARCH[k].b, RESEARCH[k].f, me.research[k]))}`);
-  bindList("units", SHIPS, buyShip, k => `${p.ships[k]} | M${SHIPS[k].c.metal} C${SHIPS[k].c.crystal} D${SHIPS[k].c.deuterium}`);
-  bindList("defenses", DEF, buyDefense, k => `${p.def[k]} | M${DEF[k].c.metal} C${DEF[k].c.crystal} D${DEF[k].c.deuterium}`);
-  bindList("officers", OFFICERS, hireOfficer, k => `${me.officers[k] ? "AKTİF" : "Pasif"} | ${OFFICERS[k].bonus}`);
+  bindList("buildings", BUILDINGS, buyBuilding, k => `Sv. ${p.b[k]} · ${formatCost(resCost(BUILDINGS[k].b, BUILDINGS[k].f, p.b[k]))}`, "Yükselt");
+  bindList("research", RESEARCH, buyResearch, k => `Sv. ${me.research[k]} · ${formatCost(resCost(RESEARCH[k].b, RESEARCH[k].f, me.research[k]))}`, "Araştır");
+  bindList("units", SHIPS, buyShip, k => `${p.ships[k]} adet · ${formatCost(SHIPS[k].c)}`, "Üret");
+  bindList("defenses", DEF, buyDefense, k => `${p.def[k]} adet · ${formatCost(DEF[k].c)}`, "Kur");
+  bindList("officers", OFFICERS, hireOfficer, k => `${me.officers[k] ? "AKTİF" : "Pasif"} · ${OFFICERS[k].bonus}`, "Aktifleştir");
 
   document.getElementById("market").innerHTML = `
     <div class='item'><span>5000 Metal -> Crystal</span><button id='tradeMC'>Çevir</button></div>
@@ -877,8 +926,7 @@ function render() {
   msgBox.innerHTML = state.messages.filter(m => m.to === 0 || m.from === 0).slice(0, 20)
     .map(m => `<div class='item'><span>T${m.turn} ${emp(m.from)?.name} ➜ ${emp(m.to)?.name}</span><small>${m.content}</small></div>`).join("");
 
-  document.getElementById("missions").innerHTML = state.missions.slice(0, 20)
-    .map(m => `<div class='item'><span>${m.type} ETA:${m.eta}${m.returnEta ? " / dönüş:" + m.returnEta : ""}</span><small>${emp(m.ownerId)?.name}</small></div>`).join("") || "Görev yok";
+  renderMissionPanel();
 
   const ally = me.allianceId ? state.alliances.find(a => a.id === me.allianceId) : null;
   document.getElementById("alliance").innerHTML = ally ? `${ally.name}<br>Üyeler: ${ally.members.map(id => emp(id).name).join(", ")}` : "İttifak yok";
@@ -922,30 +970,53 @@ function render() {
 function initStarfield2K() {
   const c = document.getElementById("starfield");
   const ctx = c.getContext("2d");
+  if (!ctx) return;
   const stars = [];
+  const compact = window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const frameInterval = 1000 / (compact ? 30 : 45);
+  let lastFrame = 0;
+  let resizeTimer;
 
   function resize() {
-    c.width = Math.max(2048, window.innerWidth);
-    c.height = Math.max(1152, window.innerHeight);
+    const width = window.visualViewport?.width || window.innerWidth;
+    const height = window.visualViewport?.height || window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, compact ? 1.35 : 1.75);
+    c.width = Math.max(1, Math.floor(width * dpr));
+    c.height = Math.max(1, Math.floor(height * dpr));
+    c.style.width = `${width}px`;
+    c.style.height = `${height}px`;
     stars.length = 0;
-    const density = Math.floor((c.width * c.height) / 7000);
+    const density = clamp(Math.floor((width * height) / (compact ? 9000 : 7000)), 36, compact ? 110 : 280);
     for (let i = 0; i < density; i++) stars.push({ x: Math.random() * c.width, y: Math.random() * c.height, z: Math.random() * 2 + 0.2 });
+    draw();
   }
-  window.addEventListener("resize", resize);
-  resize();
 
-  function tick() {
+  function draw() {
     ctx.fillStyle = "#030715";
     ctx.fillRect(0, 0, c.width, c.height);
     stars.forEach(s => {
-      s.y += s.z * 0.5;
+      if (!reducedMotion) s.y += s.z * (compact ? 0.32 : 0.5);
       if (s.y > c.height) s.y = 0;
       ctx.fillStyle = `rgba(160,220,255,${0.4 + s.z / 2.5})`;
       ctx.fillRect(s.x, s.y, s.z * 1.6, s.z * 1.6);
     });
+  }
+
+  function tick(timestamp) {
+    if (!document.hidden && timestamp - lastFrame >= frameInterval) {
+      draw();
+      lastFrame = timestamp;
+    }
     requestAnimationFrame(tick);
   }
-  tick();
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resize, 120);
+  }, { passive: true });
+  window.visualViewport?.addEventListener("resize", resize, { passive: true });
+  resize();
+  if (!reducedMotion) requestAnimationFrame(tick);
 }
 
 function formatCountdown(ms) {
@@ -956,20 +1027,19 @@ function formatCountdown(ms) {
 }
 
 function realtimeTicker(now = Date.now()) {
-  processMissions(now);
-  const missionClock = document.getElementById("missionClock");
-  const next = state.missions
-    .map(m => (m.returnEtaMs || m.etaMs || 0) - now)
-    .filter(v => v > 0)
-    .sort((a, b) => a - b)[0];
-  missionClock.textContent = next ? `En yakın görev tamamlanma: ${formatCountdown(next)}` : "Aktif geri sayım yok";
-  render();
+  const changed = processMissions(now);
+  if (changed) render();
+  else renderMissionPanel(now);
 }
 
 function boot() {
   initStarfield2K();
-  const bots = Number(prompt("Bot sayısı (20-250)", "100") || 100);
-  initGame(clamp(bots, 20, 250));
+  const compact = window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+  const maxBots = compact ? 120 : 250;
+  const fallbackBots = compact ? 50 : 100;
+  const requested = Number(prompt(`Bot sayısı (20-${maxBots})`, String(fallbackBots)) || fallbackBots);
+  const bots = Number.isFinite(requested) ? clamp(Math.floor(requested), 20, maxBots) : fallbackBots;
+  initGame(bots);
 
   document.getElementById("nextTurn").onclick = nextTurn;
   document.getElementById("launchMissionBtn").onclick = launchFromUI;
@@ -977,6 +1047,8 @@ function boot() {
   document.getElementById("expeditionBtn").onclick = expedition;
   document.getElementById("sourcePlanet").onchange = refreshMissionTargets;
   document.getElementById("missionType").onchange = refreshMissionTargets;
+  document.getElementById("targetSearch").oninput = refreshMissionTargets;
+  document.getElementById("targetPlanet").onchange = renderTargetPreview;
   document.getElementById("newGameBtn").onclick = () => location.reload();
   document.getElementById("gameOverLoadBtn").onclick = loadGame;
   document.getElementById("createAllianceBtn").onclick = createAlliance;
@@ -988,6 +1060,9 @@ function boot() {
   document.getElementById("loadBtn").onclick = loadGame;
   document.getElementById("exportBtn").onclick = exportSave;
   document.getElementById("importBtn").onclick = importSave;
+  document.querySelectorAll("[data-scroll-target]").forEach(button => {
+    button.onclick = () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 
   render();
   setInterval(realtimeTicker, 1000);
