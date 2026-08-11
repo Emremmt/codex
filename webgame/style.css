@@ -25,6 +25,7 @@ button, select, input { min-height: 40px; background: #10254d; color: var(--text
 button { touch-action: manipulation; font-weight: 650; }
 button:hover { border-color: #72b8ff; cursor: pointer; }
 button:active { transform: translateY(1px); }
+button:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
 button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(116, 211, 255, 0.5); outline-offset: 2px; }
 textarea { width: 100%; min-height: 120px; resize: vertical; background: #0e2042; color: var(--text); border: 1px solid #406aa6; border-radius: 9px; padding: 10px; }
 select, input { max-width: 100%; }

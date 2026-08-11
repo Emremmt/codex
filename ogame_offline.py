@@ -144,10 +144,11 @@ class Planet:
         energy = 25 * (sp ** 1.2)
         used = 10 * mm + 10 * cm + 20 * ds
         ratio = max(0.3, min(1.0, energy / max(1, used)))
+        automation = 1.0 + 0.04 * max(0, self.buildings["robot_factory"] - 1)
 
-        self.resources["metal"] += int(35 * (mm ** 1.18) * ratio)
-        self.resources["crystal"] += int(24 * (cm ** 1.18) * ratio)
-        self.resources["deuterium"] += int(16 * (ds ** 1.16) * ratio)
+        self.resources["metal"] += int(35 * (mm ** 1.18) * ratio * automation)
+        self.resources["crystal"] += int(24 * (cm ** 1.18) * ratio * automation)
+        self.resources["deuterium"] += int(16 * (ds ** 1.16) * ratio * automation)
 
     def power(self, weapon_bonus: float = 1.0, shield_bonus: float = 1.0, armor_bonus: float = 1.0) -> float:
         fleet_attack = sum(self.ships[u] * int(UNITS[u]["attack"]) for u in UNITS)
@@ -181,8 +182,14 @@ class GalaxyGame:
             "Mira", "Vortex", "Sidera", "Volaris", "Lyris", "Ravian", "Caligo", "Arcton", "Noxis", "Pulsar",
         ]
 
+        used_coords = set()
+
         def random_coords() -> Tuple[int, int, int]:
-            return (self.rng.randint(1, 9), self.rng.randint(1, 499), self.rng.randint(1, 15))
+            while True:
+                coords = (self.rng.randint(1, 9), self.rng.randint(1, 499), self.rng.randint(1, 15))
+                if coords not in used_coords:
+                    used_coords.add(coords)
+                    return coords
 
         for emp in self.empires:
             p = Planet(name=self.rng.choice(star_names) + f"-{emp.id}", coords=random_coords(), owner_id=emp.id)
@@ -223,6 +230,15 @@ class GalaxyGame:
     def tech_multipliers(self, empire_id: int) -> Tuple[float, float, float]:
         r = self.empires[empire_id].research
         return 1 + 0.1 * r["weapons"], 1 + 0.1 * r["shielding"], 1 + 0.1 * r["armor"]
+
+    def mobility_multiplier(self, empire_id: int) -> float:
+        research = self.empires[empire_id].research
+        return (
+            1.0
+            + 0.03 * research["combustion"]
+            + 0.05 * research["impulse"]
+            + 0.08 * research["hyperspace"]
+        )
 
     def header(self) -> str:
         return (
@@ -444,7 +460,7 @@ class GalaxyGame:
         else:
             dw, ds, da = (1.0, 1.0, 1.0)
 
-        atk = sum(sent_ships[u] * int(UNITS[u]["attack"]) for u in UNITS) * aw
+        atk = sum(sent_ships[u] * int(UNITS[u]["attack"]) for u in UNITS) * aw * self.mobility_multiplier(attacker_id)
         atk_hp = sum(sent_ships[u] * int(UNITS[u]["hp"]) for u in UNITS) * aa
         def_pow = target.power(dw, ds, da)
 
@@ -466,17 +482,20 @@ class GalaxyGame:
                 target.resources[r] -= loot[r]
                 source.resources[r] += loot[r]
 
-            if self.rng.random() < 0.5:
+            defender_survive = max(0.05, min(0.55, 1.0 - win_prob))
+            target.ships = {k: int(v * defender_survive) for k, v in target.ships.items()}
+            target.defenses = {k: int(v * min(0.65, defender_survive + 0.12)) for k, v in target.defenses.items()}
+
+            if target.owner_id >= 0 and self.rng.random() < 0.35:
                 target.owner_id = attacker_id
-                target.ships = {k: int(v * 0.2) for k, v in target.ships.items()}
-                target.defenses = {k: int(v * 0.35) for k, v in target.defenses.items()}
 
             if attacker_id == 0:
                 print(f"{C['ok']}Saldırı başarılı! Yağma: {loot}{C['reset']}")
             return True
 
-        target.ships = {k: int(v * 0.92) for k, v in target.ships.items()}
-        target.defenses = {k: int(v * 0.97) for k, v in target.defenses.items()}
+        defender_survive = max(0.65, min(0.98, 1.0 - win_prob * 0.35))
+        target.ships = {k: int(v * defender_survive) for k, v in target.ships.items()}
+        target.defenses = {k: int(v * min(0.99, defender_survive + 0.08)) for k, v in target.defenses.items()}
         if attacker_id == 0:
             print(f"{C['danger']}Saldırı geri püskürtüldü.{C['reset']}")
         return False
@@ -494,7 +513,7 @@ class GalaxyGame:
 
         # savunma/filo üretim
         for _ in range(2):
-            if self.rng.random() < 0.55:
+            if self.rng.random() < 0.55 and planet.buildings["shipyard"] >= 2:
                 u = self.rng.choice(list(UNITS))
                 amount = self.rng.randint(1, 4)
                 total = {r: int(UNITS[u]["cost"][r]) * amount for r in RES}
@@ -526,7 +545,7 @@ class GalaxyGame:
 
         targets = [p for p in self.planets if p.owner_id != empire.id]
         self.rng.shuffle(targets)
-        targets = sorted(targets[:25], key=lambda t: sum(t.resources.values()) / max(1, t.power()))
+        targets = sorted(targets[:25], key=lambda t: sum(t.resources.values()) / max(1, t.power()), reverse=True)
 
         for t in targets:
             if t.owner_id >= 0:

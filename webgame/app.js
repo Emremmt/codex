@@ -32,6 +32,16 @@ const SHIPS = {
   quantumArk: { n: "UNIQUE Quantum Ark", c: { metal: 24_000_000, crystal: 26_000_000, deuterium: 12_000_000 }, atk: 90_000, hp: 800_000, cargo: 400_000, unique: true },
 };
 
+const SHIP_REQUIREMENTS = {
+  cruiser: { building: ["shipyard", 2] },
+  battleship: { building: ["shipyard", 4], research: ["weapons", 2] },
+  colonyShip: { building: ["shipyard", 3], research: ["astrophysics", 1] },
+  recycler: { building: ["shipyard", 2] },
+  probe: { building: ["lab", 2], research: ["espionage", 1] },
+  titanDreadnought: { building: ["shipyard", 8], research: ["quantumAI", 5] },
+  quantumArk: { building: ["shipyard", 8], research: ["astrophysics", 5] },
+};
+
 const DEF = {
   rocket: { n: "Roketatar", c: { metal: 2000, crystal: 0, deuterium: 0 }, atk: 80, hp: 200 },
   lightLaser: { n: "Hafif Lazer", c: { metal: 1500, crystal: 500, deuterium: 0 }, atk: 100, hp: 200 },
@@ -119,6 +129,26 @@ function initGame(botCount = 80) {
   state.messages = [];
   state.log = ["2K komuta ağı aktive edildi."];
   state.realtime.startedAt = Date.now();
+  const occupiedCoordinates = new Set();
+  const addPlanet = planet => {
+    let key = planet.coords.join(":");
+    let attempts = 0;
+    while (occupiedCoordinates.has(key) && attempts < 20) {
+      planet.coords = [r(1, 9), r(1, 499), r(1, 15)];
+      key = planet.coords.join(":");
+      attempts++;
+    }
+    if (occupiedCoordinates.has(key)) {
+      let index = occupiedCoordinates.size;
+      do {
+        planet.coords = [1 + Math.floor(index / (499 * 15)) % 9, 1 + Math.floor(index / 15) % 499, 1 + index % 15];
+        key = planet.coords.join(":");
+        index++;
+      } while (occupiedCoordinates.has(key));
+    }
+    occupiedCoordinates.add(key);
+    state.planets.push(planet);
+  };
 
   const names = ["Astra", "Vega", "Orion", "Draco", "Nyx", "Aquila", "Helix", "Sirius"];
   state.empires.forEach(e => {
@@ -127,14 +157,32 @@ function initGame(botCount = 80) {
     p.ships.colonyShip = 1;
     p.ships.recycler = 1;
     p.def.rocket = 16;
-    state.planets.push(p);
+    addPlanet(p);
     if (e.id === 0) state.activePlanetId = p.id;
   });
   for (let i = 0; i < botCount * 2; i++) {
     const p = mkPlanet(`${names[r(0, names.length - 1)]}-N${i}`, -1, true);
     p.ships.lightFighter = r(0, 20);
     p.def.rocket = r(0, 20);
-    state.planets.push(p);
+    addPlanet(p);
+  }
+  createBotAlliances(botCount);
+}
+
+function createBotAlliances(botCount) {
+  const names = ["Orion Paktı", "Vega Birliği", "Draco Lejyonu", "Nyx Konsorsiyumu", "Aquila Muhafızları", "Helix İttifakı"];
+  const alignedBots = Math.floor(botCount * 0.75);
+  const groupSize = clamp(Math.round(botCount / 6), 4, 12);
+  let group = 0;
+  for (let first = 1; first <= alignedBots; first += groupSize) {
+    const members = state.empires
+      .filter(e => e.isBot && e.id >= first && e.id < first + groupSize)
+      .map(e => e.id);
+    if (members.length < 2) continue;
+    const alliance = { id: crypto.randomUUID(), name: names[group % names.length], members };
+    state.alliances.push(alliance);
+    members.forEach(id => { emp(id).allianceId = alliance.id; });
+    group++;
   }
 }
 
@@ -160,6 +208,24 @@ function playerEliminated() {
   return planetsOf(0).length === 0;
 }
 
+function allianceOfEmpire(empireId) {
+  const id = emp(empireId)?.allianceId;
+  return id ? state.alliances.find(a => a.id === id) || null : null;
+}
+
+function sameAlliance(firstId, secondId) {
+  const first = emp(firstId)?.allianceId;
+  return Boolean(first && first === emp(secondId)?.allianceId);
+}
+
+function activeWarBetween(firstAllianceId, secondAllianceId) {
+  if (!firstAllianceId || !secondAllianceId) return null;
+  return state.allianceWars.find(w => w.status !== "ended" && (
+    (w.a1 === firstAllianceId && w.a2 === secondAllianceId) ||
+    (w.a1 === secondAllianceId && w.a2 === firstAllianceId)
+  )) || null;
+}
+
 function tech(id) {
   const t = emp(id)?.research || {};
   return {
@@ -167,11 +233,12 @@ function tech(id) {
     hp: 1 + 0.1 * (t.armor || 0) + 0.02 * (t.orbitalFabrication || 0),
     def: 1 + 0.1 * (t.shielding || 0),
     speed: 1 + 0.08 * (t.impulse || 0),
+    drone: 1 + 0.04 * (t.autonomousDrone || 0),
   };
 }
 
 function officerMul(id) {
-  const o = emp(id).officers;
+  const o = emp(id)?.officers || {};
   return {
     eco: o.commander ? 1.1 : 1,
     shipAtk: o.admiral ? 1.08 : 1,
@@ -181,8 +248,7 @@ function officerMul(id) {
 
 function ecoTick(p) {
   const mm = p.b.metalMine, cm = p.b.crystalMine, ds = p.b.deuteriumSynth, sp = p.b.solarPlant;
-  const owner = p.ownerId >= 0 ? p.ownerId : 0;
-  const mul = officerMul(owner).eco;
+  const mul = p.ownerId >= 0 ? officerMul(p.ownerId).eco : 1;
   const energy = 25 * Math.pow(sp, 1.2);
   const used = 10 * mm + 10 * cm + 20 * ds;
   const ratio = clamp(energy / Math.max(1, used), 0.3, 1);
@@ -192,12 +258,12 @@ function ecoTick(p) {
 }
 
 function power(p, owner = p.ownerId) {
-  const t = owner >= 0 ? tech(owner) : { atk: 1, hp: 1, def: 1 };
+  const t = owner >= 0 ? tech(owner) : { atk: 1, hp: 1, def: 1, drone: 1 };
   const of = owner >= 0 ? officerMul(owner) : { shipAtk: 1, defHp: 1 };
-  let atk = 0, hp = 0;
-  Object.entries(p.ships).forEach(([k, v]) => { atk += v * SHIPS[k].atk * of.shipAtk; hp += v * SHIPS[k].hp; });
-  Object.entries(p.def).forEach(([k, v]) => { atk += v * DEF[k].atk; hp += v * DEF[k].hp * of.defHp; });
-  return atk * t.atk + hp * t.hp * (0.7 + 0.3 * t.def) * 0.2;
+  let shipAtk = 0, defAtk = 0, hp = 0;
+  Object.entries(p.ships).forEach(([k, v]) => { shipAtk += v * SHIPS[k].atk * of.shipAtk * t.drone; hp += v * SHIPS[k].hp; });
+  Object.entries(p.def).forEach(([k, v]) => { defAtk += v * DEF[k].atk; hp += v * DEF[k].hp * of.defHp; });
+  return (shipAtk + defAtk) * t.atk + hp * t.hp * (0.7 + 0.3 * t.def) * 0.2;
 }
 
 function distance(a, b) {
@@ -222,6 +288,7 @@ const MISSION_FLEET_RULES = {
 function validMissionTarget(type, from, to, ownerId) {
   if (!from || !to || from.id === to.id) return false;
   if (type === "transport") return to.ownerId === ownerId;
+  if (to.ownerId >= 0 && sameAlliance(ownerId, to.ownerId)) return false;
   return to.ownerId !== ownerId;
 }
 
@@ -302,47 +369,103 @@ function launchMission(type, fromId, toId, ownerId, now = Date.now(), options = 
   return `Görev çıktı: ${type}, varış turu ${eta}`;
 }
 
-function resolveCombat(attackerId, target, fleet) {
+function applySurvival(pool, definitions, factor) {
+  const losses = {};
+  let destroyedPower = 0;
+  Object.keys(pool).forEach(k => {
+    const before = pool[k] || 0;
+    const after = Math.max(0, Math.floor(before * factor));
+    losses[k] = before - after;
+    pool[k] = after;
+    destroyedPower += losses[k] * ((definitions[k]?.atk || 0) + (definitions[k]?.hp || 0) * 0.2);
+  });
+  return { losses, destroyedPower };
+}
+
+function maxEmpirePlanets(empireId) {
+  return 1 + Math.ceil((emp(empireId)?.research.astrophysics || 0) / 2);
+}
+
+function resolveCombat(attackerId, target, fleet, random = Math.random) {
+  const defenderOwnerId = target.ownerId;
   const attackerTech = tech(attackerId);
-  const defTech = target.ownerId >= 0 ? tech(target.ownerId) : { atk: 1, hp: 1, def: 1 };
+  const attackerOfficer = officerMul(attackerId);
+  const defTech = defenderOwnerId >= 0 ? tech(defenderOwnerId) : { atk: 1, hp: 1, def: 1, drone: 1 };
+  const defenderOfficer = defenderOwnerId >= 0 ? officerMul(defenderOwnerId) : { shipAtk: 1, defHp: 1 };
   let atk = 0, atkHp = 0;
   Object.entries(fleet).forEach(([k, v]) => { atk += v * SHIPS[k].atk; atkHp += v * SHIPS[k].hp; });
 
-  let defAtk = 0, defHp = 0;
-  Object.entries(target.ships).forEach(([k, v]) => { defAtk += v * SHIPS[k].atk; defHp += v * SHIPS[k].hp; });
-  Object.entries(target.def).forEach(([k, v]) => { defAtk += v * DEF[k].atk; defHp += v * DEF[k].hp; });
+  let defShipAtk = 0, defStructureAtk = 0, defShipHp = 0, defStructureHp = 0;
+  Object.entries(target.ships).forEach(([k, v]) => { defShipAtk += v * SHIPS[k].atk; defShipHp += v * SHIPS[k].hp; });
+  Object.entries(target.def).forEach(([k, v]) => { defStructureAtk += v * DEF[k].atk; defStructureHp += v * DEF[k].hp; });
 
-  let ap = atkHp * attackerTech.hp;
-  let dp = defHp * defTech.hp;
+  const attackerMaxHp = atkHp * attackerTech.hp * (0.75 + 0.25 * attackerTech.def);
+  const defenderMaxHp = (defShipHp + defStructureHp * defenderOfficer.defHp) * defTech.hp * (0.75 + 0.25 * defTech.def);
+  const attackerDamage = atk * attackerTech.atk * attackerOfficer.shipAtk * attackerTech.drone;
+  const defenderDamage = (defShipAtk * defenderOfficer.shipAtk * defTech.drone + defStructureAtk) * defTech.atk;
+  let ap = attackerMaxHp;
+  let dp = defenderMaxHp;
   for (let i = 0; i < 7; i++) {
-    dp -= (atk * attackerTech.atk) * (0.82 + Math.random() * 0.32);
-    ap -= (defAtk * defTech.atk) * (0.82 + Math.random() * 0.32);
+    const nextDp = dp - attackerDamage * (0.82 + random() * 0.32);
+    const nextAp = ap - defenderDamage * (0.82 + random() * 0.32);
+    dp = nextDp;
+    ap = nextAp;
     if (ap <= 0 || dp <= 0) break;
   }
 
-  const win = ap > dp;
+  const attackerRatio = clamp(ap / Math.max(1, attackerMaxHp), 0, 1);
+  const defenderRatio = clamp(dp / Math.max(1, defenderMaxHp), 0, 1);
+  const win = attackerRatio > 0 && (dp <= 0 || attackerRatio > defenderRatio);
+  const survivor = win ? clamp(attackerRatio, 0.08, 0.92) : clamp(attackerRatio, 0, 0.28);
+  const defenderSurvivor = win ? clamp(defenderRatio, 0, 0.42) : clamp(defenderRatio, 0.42, 0.98);
+  const shipDamage = applySurvival(target.ships, SHIPS, defenderSurvivor);
+  const defenseDamage = applySurvival(target.def, DEF, defenderSurvivor);
+  const destroyedPower = shipDamage.destroyedPower + defenseDamage.destroyedPower;
+  const loot = { metal: 0, crystal: 0, deuterium: 0 };
+
   if (win) {
-    const surv = clamp(ap / Math.max(1, atkHp), 0.1, 0.86);
-    const cargo = Object.entries(fleet).reduce((a, [k, v]) => a + v * SHIPS[k].cargo, 0) * surv;
+    const cargo = fleetCargoCapacity(fleet) * survivor;
     const totalLoot = Math.floor(Math.min(cargo, (target.resources.metal + target.resources.crystal + target.resources.deuterium) * 0.45));
-    const loot = {
-      metal: Math.min(target.resources.metal, Math.floor(totalLoot * 0.5)),
-      crystal: Math.min(target.resources.crystal, Math.floor(totalLoot * 0.3)),
-      deuterium: Math.min(target.resources.deuterium, Math.floor(totalLoot * 0.2)),
-    };
+    loot.metal = Math.min(target.resources.metal, Math.floor(totalLoot * 0.5));
+    loot.crystal = Math.min(target.resources.crystal, Math.floor(totalLoot * 0.3));
+    loot.deuterium = Math.min(target.resources.deuterium, Math.floor(totalLoot * 0.2));
     RES.forEach(k => target.resources[k] -= loot[k]);
-    if (Math.random() < 0.3) {
+
+    const canConquer = defenderOwnerId >= 0 && defenderOwnerId !== attackerId && planetsOf(attackerId).length < maxEmpirePlanets(attackerId);
+    if (canConquer && random() < 0.18) {
       target.ownerId = attackerId;
-      Object.keys(target.ships).forEach(k => target.ships[k] = Math.floor(target.ships[k] * 0.25));
-      Object.keys(target.def).forEach(k => target.def[k] = Math.floor(target.def[k] * 0.5));
+      Object.keys(target.ships).forEach(k => { target.ships[k] = 0; });
+      Object.keys(target.def).forEach(k => { target.def[k] = 0; });
     }
-    if (!target.moon && Math.random() < 0.18) target.moon = true;
-    return { win: true, loot, survivor: surv };
+    if (!target.moon && destroyedPower >= 5_000 && random() < 0.12) target.moon = true;
   }
 
-  Object.keys(target.ships).forEach(k => target.ships[k] = Math.floor(target.ships[k] * 0.94));
-  Object.keys(target.def).forEach(k => target.def[k] = Math.floor(target.def[k] * 0.97));
-  return { win: false, loot: { metal: 0, crystal: 0, deuterium: 0 }, survivor: 0.15 };
+  return {
+    win,
+    loot,
+    survivor,
+    defenderSurvivor,
+    defenderOwnerId,
+    defenderLosses: { ships: shipDamage.losses, defenses: defenseDamage.losses },
+    destroyedPower,
+    conquered: target.ownerId === attackerId && defenderOwnerId !== attackerId,
+  };
+}
+
+function recordAllianceBattle(attackerId, defenderId, result, targetName) {
+  if (defenderId < 0) return;
+  const attackerAlliance = allianceOfEmpire(attackerId);
+  const defenderAlliance = allianceOfEmpire(defenderId);
+  const war = activeWarBetween(attackerAlliance?.id, defenderAlliance?.id);
+  if (!war) return;
+
+  const points = Math.max(1, Math.floor(result.destroyedPower / 1_000) + (result.win ? 5 : 1));
+  if (war.a1 === attackerAlliance.id) war.score1 += points;
+  else war.score2 += points;
+  war.battles = war.battles || [];
+  war.battles.unshift({ turn: state.turn, attackerId, defenderId, targetName, win: result.win, points });
+  war.battles = war.battles.slice(0, 30);
+  updateAllianceWarScores();
 }
 
 function missionReady(turnEta, timeEta, now) {
@@ -405,13 +528,14 @@ function processMissions(now = Date.now()) {
     if (m.phase === "outbound") {
       if (m.type === "attack") {
         const res = resolveCombat(m.ownerId, to, m.fleet);
+        recordAllianceBattle(m.ownerId, res.defenderOwnerId, res, to.name);
         m.cargo = { ...res.loot };
         Object.keys(m.fleet).forEach(k => m.fleet[k] = Math.floor(m.fleet[k] * res.survivor));
         state.log.unshift(`[T${state.turn}] Savaş sonucu: ${res.win ? "Zafer" : "Yenilgi"}.`);
         state.missionReports.unshift({
           turn: state.turn,
           title: `Savaş Raporu: ${to.name}`,
-          detail: `${res.win ? "Zafer" : "Yenilgi"} | Yağma M:${res.loot.metal} C:${res.loot.crystal} D:${res.loot.deuterium}`,
+          detail: `${res.win ? "Zafer" : "Yenilgi"}${res.conquered ? " · Gezegen fethedildi" : ""} | Yok edilen güç ${Math.floor(res.destroyedPower)} | Yağma M:${res.loot.metal} C:${res.loot.crystal} D:${res.loot.deuterium}`,
         });
       }
       if (m.type === "espionage") {
@@ -458,6 +582,20 @@ function processMissions(now = Date.now()) {
   return before !== after;
 }
 
+function shipRequirementFailure(key, planet, empire) {
+  const requirement = SHIP_REQUIREMENTS[key];
+  if (!requirement) return null;
+  if (requirement.building) {
+    const [building, level] = requirement.building;
+    if ((planet.b[building] || 0) < level) return `${BUILDINGS[building].n} Sv. ${level} gerekli`;
+  }
+  if (requirement.research) {
+    const [research, level] = requirement.research;
+    if ((empire.research[research] || 0) < level) return `${RESEARCH[research].n} Sv. ${level} gerekli`;
+  }
+  return null;
+}
+
 function botTurn(e) {
   const ps = planetsOf(e.id);
   ps.forEach(p => {
@@ -473,11 +611,15 @@ function botTurn(e) {
       if (pay(p.resources, c)) e.research[rk]++;
     }
 
-    const sk = Object.keys(SHIPS)[r(0, 4)];
-    if (pay(p.resources, SHIPS[sk].c)) p.ships[sk] += 1;
+    const buildable = Object.keys(SHIPS).filter(k => !shipRequirementFailure(k, p, e) && !(SHIPS[k].unique && e.uniqueBuilt[k]));
+    const sk = buildable[r(0, Math.max(0, buildable.length - 1))];
+    if (sk && pay(p.resources, SHIPS[sk].c)) {
+      p.ships[sk] += 1;
+      if (SHIPS[sk].unique) e.uniqueBuilt[sk] = true;
+    }
 
     if (Math.random() < 0.2) {
-      const t = state.planets.filter(x => x.ownerId !== e.id).sort((a, b) => power(a) - power(b))[0];
+      const t = state.planets.filter(x => validMissionTarget("attack", p, x, e.id)).sort((a, b) => power(a) - power(b))[0];
       if (t && power(p, e.id) > power(t) * 1.2) launchMission("attack", p.id, t.id, e.id);
     }
   });
@@ -518,6 +660,8 @@ function buyShip(key) {
   const p = activePlanet();
   if (!p) return log("Yönetilecek gezegen kalmadı.");
   const e = emp(0);
+  const requirement = shipRequirementFailure(key, p, e);
+  if (requirement) return log(requirement);
   if (SHIPS[key].unique && e.uniqueBuilt[key]) return log("Unique ünite bir kez üretilebilir.");
   if (pay(p.resources, SHIPS[key].c)) {
     p.ships[key] += 1;
@@ -570,7 +714,7 @@ function trade(mode) {
 function createAlliance() {
   const e = emp(0);
   if (e.allianceId) return log("Zaten ittifaktasın.");
-  const name = prompt("İttifak adı?", "NovaGuard");
+  const name = String(prompt("İttifak adı?", "NovaGuard") || "").trim().slice(0, 32);
   if (!name) return;
   const a = { id: crypto.randomUUID(), name, members: [0] };
   state.alliances.push(a);
@@ -590,57 +734,99 @@ function inviteBot() {
   render();
 }
 
-function sendMessage() {
-  const to = Number(document.getElementById("messageTo").value);
-  const content = document.getElementById("messageInput").value.trim();
+function sendMessage(toValue = null, contentValue = null) {
+  const to = Number(toValue ?? (typeof document !== "undefined" ? document.getElementById("messageTo").value : 0));
+  const content = String(contentValue ?? (typeof document !== "undefined" ? document.getElementById("messageInput").value : "")).trim().slice(0, 240);
+  const recipient = emp(to);
   if (!content) return;
+  if (!recipient?.isBot || !planetsOf(to).length) return log("Alıcı artık erişilebilir değil.");
   state.messages.unshift({ from: 0, to, content, turn: state.turn });
-  document.getElementById("messageInput").value = "";
+  const reply = sameAlliance(0, to)
+    ? "Mesaj alındı komutan. İttifak kanalı açık."
+    : (activeWarBetween(emp(0).allianceId, recipient.allianceId)
+      ? "İletin kayda geçti. Savaş alanında cevap vereceğiz."
+      : "Mesaj alındı. Diplomatik teklif değerlendiriliyor.");
+  state.messages.unshift({ from: to, to: 0, content: reply, turn: state.turn });
+  if (typeof document !== "undefined") document.getElementById("messageInput").value = "";
   log("Mesaj gönderildi.");
   render();
+  return true;
 }
 
-function declareAllianceWar() {
+function declareAllianceWar(targetAllianceId = null) {
   const me = emp(0);
   if (!me.allianceId) return log("Savaş ilanı için ittifak gerekli.");
-  const targetId = document.getElementById("warTargetAlliance").value;
+  const targetId = typeof targetAllianceId === "string"
+    ? targetAllianceId
+    : (typeof document !== "undefined" ? document.getElementById("warTargetAlliance").value : "");
   if (!targetId) return log("Rakip ittifak seç.");
-  const exists = state.allianceWars.find(w =>
-    (w.a1 === me.allianceId && w.a2 === targetId) || (w.a1 === targetId && w.a2 === me.allianceId)
-  );
+  if (!state.alliances.some(a => a.id === targetId) || targetId === me.allianceId) return log("Geçerli bir rakip ittifak seç.");
+  const exists = activeWarBetween(me.allianceId, targetId);
   if (exists) return log("Bu ittifakla zaten savaş var.");
-  state.allianceWars.push({ id: crypto.randomUUID(), a1: me.allianceId, a2: targetId, startedTurn: state.turn, score1: 0, score2: 0 });
+  state.allianceWars.push({
+    id: crypto.randomUUID(),
+    a1: me.allianceId,
+    a2: targetId,
+    startedTurn: state.turn,
+    score1: 0,
+    score2: 0,
+    targetScore: 100,
+    status: "active",
+    winnerAllianceId: null,
+    battles: [],
+  });
   log("İttifak savaşı ilan edildi.");
   render();
+  return true;
 }
 
-function createTradeContract() {
-  const botId = Number(document.getElementById("contractBot").value);
-  if (!botId) return;
+function createTradeContract(botIdValue = null) {
+  const botId = Number(typeof botIdValue === "number" || typeof botIdValue === "string"
+    ? botIdValue
+    : (typeof document !== "undefined" ? document.getElementById("contractBot").value : 0));
+  const bot = emp(botId);
+  const playerPlanet = activePlanet();
+  const partnerPlanet = planetsOf(botId)[0];
+  if (!bot?.isBot || !playerPlanet || !partnerPlanet) return log("Ticaret ortağı erişilebilir değil.");
+  if (activeWarBetween(emp(0).allianceId, bot.allianceId)) return log("Savaşta olduğun ittifakla ticaret yapamazsın.");
+  if (state.tradeContracts.some(c => c.active && c.with === botId && c.playerPlanetId === playerPlanet.id)) return log("Bu gezegenin aynı botla aktif sözleşmesi zaten var.");
   const c = {
     id: crypto.randomUUID(),
     with: botId,
+    playerPlanetId: playerPlanet.id,
+    partnerPlanetId: partnerPlanet.id,
     give: { metal: 12000, crystal: 0, deuterium: 0 },
     take: { metal: 0, crystal: 6000, deuterium: 1800 },
     everyTurns: 3,
     nextTurn: state.turn + 1,
     active: true,
+    missedPayments: 0,
   };
   state.tradeContracts.push(c);
-  log(`${emp(botId).name} ile ticaret sözleşmesi kuruldu.`);
+  log(`${bot.name} ile ticaret sözleşmesi kuruldu.`);
   render();
+  return c;
 }
 
 function processTradeContracts() {
-  const home = activePlanet();
-  if (!home) return;
   state.tradeContracts.forEach(c => {
     if (!c.active || state.turn < c.nextTurn) return;
-    if (can(home.resources, c.give)) {
+    const home = state.planets.find(p => p.id === c.playerPlanetId && p.ownerId === 0);
+    const partner = state.planets.find(p => p.id === c.partnerPlanetId && p.ownerId === c.with);
+    if (!home || !partner) {
+      c.active = false;
+      reportMission("Ticaret Sözleşmesi Bitti", "Taraflardan biri sözleşmedeki gezegenini kaybetti.");
+      return;
+    }
+
+    if (can(home.resources, c.give) && can(partner.resources, c.take)) {
       RES.forEach(k => {
         home.resources[k] -= c.give[k];
         home.resources[k] += c.take[k];
+        partner.resources[k] -= c.take[k];
+        partner.resources[k] += c.give[k];
       });
+      c.missedPayments = 0;
       state.missionReports.unshift({
         turn: state.turn,
         title: "Ticaret Sözleşmesi",
@@ -648,25 +834,42 @@ function processTradeContracts() {
       });
       c.nextTurn += c.everyTurns;
     } else {
-      c.active = false;
+      c.missedPayments = (c.missedPayments || 0) + 1;
+      c.nextTurn += c.everyTurns;
+      if (c.missedPayments >= 3) c.active = false;
       state.missionReports.unshift({
         turn: state.turn,
-        title: "Ticaret Sözleşmesi Durdu",
-        detail: "Yetersiz kaynak nedeniyle sözleşme pasif oldu.",
+        title: c.active ? "Ticaret Ödemesi Ertelendi" : "Ticaret Sözleşmesi Durdu",
+        detail: c.active ? "Taraflardan birinin kaynağı yetersiz; sonraki dönem yeniden denenecek." : "Üç başarısız dönemden sonra sözleşme pasif oldu.",
       });
     }
   });
 }
 
+function cancelTradeContract(contractId) {
+  const contract = state.tradeContracts.find(c => c.id === contractId);
+  if (!contract || !contract.active) return false;
+  contract.active = false;
+  log(`${emp(contract.with)?.name || "Ticaret"} sözleşmesi iptal edildi.`);
+  render();
+  return true;
+}
+
 function updateAllianceWarScores() {
   state.allianceWars.forEach(w => {
+    if (w.status === "ended") return;
     const a1 = state.alliances.find(a => a.id === w.a1);
     const a2 = state.alliances.find(a => a.id === w.a2);
-    if (!a1 || !a2) return;
-    const p1 = a1.members.flatMap(id => planetsOf(id));
-    const p2 = a2.members.flatMap(id => planetsOf(id));
-    w.score1 = Math.floor(p1.reduce((s, p) => s + power(p, p.ownerId), 0) / 1000);
-    w.score2 = Math.floor(p2.reduce((s, p) => s + power(p, p.ownerId), 0) / 1000);
+    const a1Alive = a1?.members.some(id => planetsOf(id).length > 0);
+    const a2Alive = a2?.members.some(id => planetsOf(id).length > 0);
+    const target = w.targetScore || 100;
+    if (!a1 || !a2 || !a1Alive || !a2Alive || w.score1 >= target || w.score2 >= target) {
+      w.status = "ended";
+      w.endedTurn = state.turn;
+      w.winnerAllianceId = !a2Alive || w.score1 >= target ? w.a1 : (!a1Alive || w.score2 >= target ? w.a2 : null);
+      const winner = state.alliances.find(a => a.id === w.winnerAllianceId)?.name || "Berabere";
+      reportMission("İttifak Savaşı Bitti", `Kazanan: ${winner} · Skor ${w.score1}-${w.score2}`);
+    }
   });
 }
 
@@ -730,7 +933,7 @@ function launchFromUI() {
 }
 
 function maxPlayerPlanets() {
-  return 1 + Math.ceil((emp(0)?.research.astrophysics || 0) / 2);
+  return maxEmpirePlanets(0);
 }
 
 function isColonizable(target) {
@@ -786,20 +989,37 @@ function expedition() {
 function log(s) {
   state.log.unshift(`[T${state.turn}] ${s}`);
   state.log = state.log.slice(0, 60);
+  if (typeof document !== "undefined") {
+    const battleLog = document.getElementById("battleLog");
+    if (battleLog) battleLog.textContent = state.log.join("\n");
+  }
 }
 
 function formatCost(cost) {
   return `M ${Math.floor(cost.metal || 0).toLocaleString("tr-TR")} · K ${Math.floor(cost.crystal || 0).toLocaleString("tr-TR")} · D ${Math.floor(cost.deuterium || 0).toLocaleString("tr-TR")}`;
 }
 
-function bindList(elId, map, onClick, formatter, actionLabel = "İşlem") {
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function bindList(elId, map, onClick, formatter, actionLabel = "İşlem", disabledReason = null) {
   const el = document.getElementById(elId);
   el.innerHTML = "";
   Object.keys(map).forEach(k => {
     const d = document.createElement("div");
     d.className = "item";
     d.innerHTML = `<span>${map[k].n}<br><small>${formatter(k)}</small></span><button type="button">${actionLabel}</button>`;
-    d.querySelector("button").onclick = () => onClick(k);
+    const button = d.querySelector("button");
+    const reason = disabledReason?.(k) || "";
+    button.disabled = Boolean(reason);
+    if (reason) button.title = reason;
+    button.onclick = () => onClick(k);
     el.appendChild(d);
   });
 }
@@ -911,7 +1131,14 @@ function render() {
 
   bindList("buildings", BUILDINGS, buyBuilding, k => `Sv. ${p.b[k]} · ${formatCost(resCost(BUILDINGS[k].b, BUILDINGS[k].f, p.b[k]))}`, "Yükselt");
   bindList("research", RESEARCH, buyResearch, k => `Sv. ${me.research[k]} · ${formatCost(resCost(RESEARCH[k].b, RESEARCH[k].f, me.research[k]))}`, "Araştır");
-  bindList("units", SHIPS, buyShip, k => `${p.ships[k]} adet · ${formatCost(SHIPS[k].c)}`, "Üret");
+  bindList(
+    "units",
+    SHIPS,
+    buyShip,
+    k => `${p.ships[k]} adet · ${shipRequirementFailure(k, p, me) || formatCost(SHIPS[k].c)}`,
+    "Üret",
+    k => shipRequirementFailure(k, p, me),
+  );
   bindList("defenses", DEF, buyDefense, k => `${p.def[k]} adet · ${formatCost(DEF[k].c)}`, "Kur");
   bindList("officers", OFFICERS, hireOfficer, k => `${me.officers[k] ? "AKTİF" : "Pasif"} · ${OFFICERS[k].bonus}`, "Aktifleştir");
 
@@ -924,12 +1151,12 @@ function render() {
 
   const msgBox = document.getElementById("messages");
   msgBox.innerHTML = state.messages.filter(m => m.to === 0 || m.from === 0).slice(0, 20)
-    .map(m => `<div class='item'><span>T${m.turn} ${emp(m.from)?.name} ➜ ${emp(m.to)?.name}</span><small>${m.content}</small></div>`).join("");
+    .map(m => `<div class='item'><span>T${m.turn} ${escapeHtml(emp(m.from)?.name || "?")} ➜ ${escapeHtml(emp(m.to)?.name || "?")}</span><small>${escapeHtml(m.content)}</small></div>`).join("");
 
   renderMissionPanel();
 
   const ally = me.allianceId ? state.alliances.find(a => a.id === me.allianceId) : null;
-  document.getElementById("alliance").innerHTML = ally ? `${ally.name}<br>Üyeler: ${ally.members.map(id => emp(id).name).join(", ")}` : "İttifak yok";
+  document.getElementById("alliance").innerHTML = ally ? `${escapeHtml(ally.name)}<br>Üyeler: ${ally.members.map(id => escapeHtml(emp(id)?.name || "?")).join(", ")}` : "İttifak yok";
 
   const src = document.getElementById("sourcePlanet");
   const previousSource = src.value;
@@ -937,7 +1164,7 @@ function render() {
   src.value = planetsOf(0).some(x => x.id === previousSource) ? previousSource : p.id;
   refreshMissionTargets();
 
-  document.getElementById("messageTo").innerHTML = state.empires.filter(x => x.id !== 0).slice(0, 80)
+  document.getElementById("messageTo").innerHTML = state.empires.filter(x => x.id !== 0 && planetsOf(x.id).length).slice(0, 80)
     .map(x => `<option value='${x.id}'>${x.name}</option>`).join("");
 
   const myAllianceId = me.allianceId;
@@ -945,18 +1172,22 @@ function render() {
     .filter(a => a.id !== myAllianceId)
     .map(a => `<option value='${a.id}'>${a.name}</option>`).join("") || "<option value=''>Rakip ittifak yok</option>";
 
-  document.getElementById("contractBot").innerHTML = state.empires.filter(x => x.isBot).slice(0, 80)
+  document.getElementById("contractBot").innerHTML = state.empires.filter(x => x.isBot && planetsOf(x.id).length).slice(0, 80)
     .map(x => `<option value='${x.id}'>${x.name}</option>`).join("");
 
   document.getElementById("wars").innerHTML = state.allianceWars.map(w => {
     const a1 = state.alliances.find(a => a.id === w.a1)?.name || "A1";
     const a2 = state.alliances.find(a => a.id === w.a2)?.name || "A2";
-    return `<div class='item'><span>${a1} vs ${a2}</span><small>${w.score1} - ${w.score2}</small></div>`;
-  }).join("") || "Aktif savaş yok";
+    const status = w.status === "ended" ? "Bitti" : `Hedef ${w.targetScore || 100}`;
+    return `<div class='item'><span>${a1} vs ${a2}<br><small>${status} · ${w.battles?.length || 0} çatışma</small></span><strong>${w.score1} - ${w.score2}</strong></div>`;
+  }).join("") || "Savaş kaydı yok";
 
   document.getElementById("contracts").innerHTML = state.tradeContracts.map(c =>
-    `<div class='item'><span>${emp(c.with)?.name} | her ${c.everyTurns} tur</span><small>${c.active ? "aktif" : "pasif"} / sonraki:${c.nextTurn}</small></div>`
+    `<div class='item'><span>${emp(c.with)?.name || "Eski ortak"} · her ${c.everyTurns} tur<br><small>${c.active ? `Aktif · sonraki ${c.nextTurn}. tur · gecikme ${c.missedPayments || 0}/3` : "Pasif"}</small></span>${c.active ? `<button type='button' data-cancel-contract='${c.id}'>İptal</button>` : ""}</div>`
   ).join("") || "Sözleşme yok";
+  document.querySelectorAll("[data-cancel-contract]").forEach(button => {
+    button.onclick = () => cancelTradeContract(button.dataset.cancelContract);
+  });
 
   document.getElementById("reports").innerHTML = state.missionReports.slice(0, 30).map(rp =>
     `<div class='item'><span>T${rp.turn} ${rp.title}</span><small>${rp.detail}</small></div>`
@@ -1053,7 +1284,7 @@ function boot() {
   document.getElementById("gameOverLoadBtn").onclick = loadGame;
   document.getElementById("createAllianceBtn").onclick = createAlliance;
   document.getElementById("inviteBotBtn").onclick = inviteBot;
-  document.getElementById("sendMessageBtn").onclick = sendMessage;
+  document.getElementById("sendMessageBtn").onclick = () => sendMessage();
   document.getElementById("declareWarBtn").onclick = declareAllianceWar;
   document.getElementById("createContractBtn").onclick = createTradeContract;
   document.getElementById("saveBtn").onclick = saveGame;
@@ -1074,6 +1305,9 @@ const NOVA_TEST_API = {
   activePlanet,
   selectActivePlanet,
   playerEliminated,
+  allianceOfEmpire,
+  sameAlliance,
+  activeWarBetween,
   launchMission,
   processMissions,
   missionTargets,
@@ -1084,11 +1318,21 @@ const NOVA_TEST_API = {
   returnDestination,
   travelTurns,
   resolveCombat,
+  recordAllianceBattle,
+  maxEmpirePlanets,
+  shipRequirementFailure,
   buyBuilding,
   colonize,
   maxPlayerPlanets,
   isColonizable,
   expedition,
+  declareAllianceWar,
+  sendMessage,
+  createTradeContract,
+  processTradeContracts,
+  cancelTradeContract,
+  updateAllianceWarScores,
+  power,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = NOVA_TEST_API;
