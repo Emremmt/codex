@@ -188,10 +188,11 @@ function travelTurns(from, to, ownerId) {
   return Math.max(1, Math.ceil((d / (110 * speed))));
 }
 
-function launchMission(type, fromId, toId, ownerId) {
+function launchMission(type, fromId, toId, ownerId, now = Date.now()) {
   const from = state.planets.find(p => p.id === fromId);
   const to = state.planets.find(p => p.id === toId);
   if (!from || !to || from.ownerId !== ownerId) return "Görev başlatılamadı.";
+  if (!["attack", "espionage", "transport", "recycle"].includes(type)) return "Geçersiz görev türü.";
 
   const fleet = {};
   Object.keys(from.ships).forEach(k => {
@@ -209,8 +210,10 @@ function launchMission(type, fromId, toId, ownerId) {
     fromId,
     toId,
     fleet,
+    cargo: { metal: 0, crystal: 0, deuterium: 0 },
+    phase: "outbound",
     eta,
-    etaMs: Date.now() + durationSec * 1000,
+    etaMs: now + durationSec * 1000,
     returnEta: null,
     returnEtaMs: null,
     done: false,
@@ -261,31 +264,66 @@ function resolveCombat(attackerId, target, fleet) {
   return { win: false, loot: { metal: 0, crystal: 0, deuterium: 0 }, survivor: 0.15 };
 }
 
-function processMissions() {
+function missionReady(turnEta, timeEta, now) {
+  const turnReady = Number.isFinite(turnEta) && turnEta <= state.turn;
+  const timeReady = Number.isFinite(timeEta) && timeEta <= now;
+  return turnReady || timeReady;
+}
+
+function reportMission(title, detail) {
+  state.missionReports.unshift({ turn: state.turn, title, detail });
+}
+
+function returnDestination(m) {
+  const origin = state.planets.find(p => p.id === m.fromId && p.ownerId === m.ownerId);
+  return origin || planetsOf(m.ownerId)[0] || null;
+}
+
+function finishMissionReturn(m) {
+  const home = returnDestination(m);
+  if (!home) {
+    m.done = true;
+    state.log.unshift(`[T${state.turn}] ${emp(m.ownerId)?.name || "Bilinmeyen imparatorluk"} filosu dönecek üs bulamadı.`);
+    reportMission(`Filo Kaybı (${m.type})`, "İmparatorluğun sahip olduğu gezegen kalmadığı için filo ve taşıdığı kaynaklar kaybedildi.");
+    return;
+  }
+
+  Object.keys(m.fleet).forEach(k => { home.ships[k] = (home.ships[k] || 0) + (m.fleet[k] || 0); });
+  RES.forEach(k => { home.resources[k] += m.cargo?.[k] || 0; });
+  m.done = true;
+  state.log.unshift(`[T${state.turn}] Filo ${home.name} gezegenine geri döndü.`);
+  reportMission(
+    `Dönüş Raporu (${m.type})`,
+    `${emp(m.ownerId)?.name || "Filo"} ${home.name} gezegenine döndü. Yük M:${m.cargo?.metal || 0} C:${m.cargo?.crystal || 0} D:${m.cargo?.deuterium || 0}`,
+  );
+}
+
+function processMissions(now = Date.now()) {
   state.missions.forEach(m => {
     if (m.done) return;
-    if (m.eta > state.turn && Date.now() < (m.etaMs || 0)) return;
-    const from = state.planets.find(p => p.id === m.fromId);
-    const to = state.planets.find(p => p.id === m.toId);
-    if (!from || !to) { m.done = true; return; }
+    // Eski save dosyalarında phase/cargo alanı yoktur; yüklenirken güvenli şekilde tamamla.
+    m.phase = m.phase || (m.returnEta ? "returning" : "outbound");
+    m.cargo = m.cargo || { metal: 0, crystal: 0, deuterium: 0 };
 
-    if (m.returnEta && m.returnEta <= state.turn) {
-      Object.keys(m.fleet).forEach(k => from.ships[k] += m.fleet[k]);
-      m.done = true;
-      state.log.unshift(`[T${state.turn}] Filo geri döndü.`);
-      state.missionReports.unshift({
-        turn: state.turn,
-        title: `Dönüş Raporu (${m.type})`,
-        detail: `${emp(m.ownerId)?.name} filosu ${from.name} gezegenine döndü.`,
-      });
+    if (m.phase === "returning") {
+      if (!missionReady(m.returnEta, m.returnEtaMs, now)) return;
+      finishMissionReturn(m);
       return;
     }
 
-    if (!m.returnEta) {
+    if (!missionReady(m.eta, m.etaMs, now)) return;
+    const from = state.planets.find(p => p.id === m.fromId);
+    const to = state.planets.find(p => p.id === m.toId);
+    if (!from || !to || from.ownerId !== m.ownerId) {
+      m.done = true;
+      reportMission(`Görev İptal (${m.type})`, "Kaynak veya hedef gezegen artık geçerli olmadığı için görev iptal edildi.");
+      return;
+    }
+
+    if (m.phase === "outbound") {
       if (m.type === "attack") {
         const res = resolveCombat(m.ownerId, to, m.fleet);
-        const attackerPlanet = planetsOf(m.ownerId)[0];
-        if (attackerPlanet) RES.forEach(k => attackerPlanet.resources[k] += res.loot[k]);
+        m.cargo = { ...res.loot };
         Object.keys(m.fleet).forEach(k => m.fleet[k] = Math.floor(m.fleet[k] * res.survivor));
         state.log.unshift(`[T${state.turn}] Savaş sonucu: ${res.win ? "Zafer" : "Yenilgi"}.`);
         state.missionReports.unshift({
@@ -317,7 +355,7 @@ function processMissions() {
       }
       if (m.type === "recycle") {
         const bonus = r(3000, 12000);
-        planetsOf(m.ownerId)[0].resources.metal += bonus;
+        m.cargo.metal += bonus;
         state.log.unshift(`[T${state.turn}] Recycler enkaz topladı +${bonus} metal.`);
         state.missionReports.unshift({
           turn: state.turn,
@@ -325,8 +363,9 @@ function processMissions() {
           detail: `Recycler operasyonu +${bonus} metal getirdi.`,
         });
       }
+      m.phase = "returning";
       m.returnEta = state.turn + travelTurns(to, from, m.ownerId);
-      m.returnEtaMs = Date.now() + travelTurns(to, from, m.ownerId) * 25 * 1000;
+      m.returnEtaMs = now + travelTurns(to, from, m.ownerId) * 25 * 1000;
     }
   });
   state.missions = state.missions.filter(m => !m.done);
@@ -750,11 +789,11 @@ function formatCountdown(ms) {
   return `${m}:${s}`;
 }
 
-function realtimeTicker() {
-  processMissions();
+function realtimeTicker(now = Date.now()) {
+  processMissions(now);
   const missionClock = document.getElementById("missionClock");
   const next = state.missions
-    .map(m => (m.returnEtaMs || m.etaMs || 0) - Date.now())
+    .map(m => (m.returnEtaMs || m.etaMs || 0) - now)
     .filter(v => v > 0)
     .sort((a, b) => a - b)[0];
   missionClock.textContent = next ? `En yakın görev tamamlanma: ${formatCountdown(next)}` : "Aktif geri sayım yok";
@@ -784,4 +823,16 @@ function boot() {
   setInterval(realtimeTicker, 1000);
 }
 
-boot();
+const NOVA_TEST_API = {
+  state,
+  initGame,
+  launchMission,
+  processMissions,
+  missionReady,
+  returnDestination,
+  travelTurns,
+  resolveCombat,
+};
+
+if (typeof module !== "undefined" && module.exports) module.exports = NOVA_TEST_API;
+if (typeof document !== "undefined") boot();
