@@ -49,6 +49,13 @@ Koloni gemisi yalnızca boş ve savunmasız nötr gezegenleri kolonileştirir. K
 - Alt gezinme çubuğu Üs, Üretim, Komuta, İttifak ve Rapor panellerine hızlı erişim verir.
 - Kontroller en az 44 px dokunma alanı, çentik/güvenli alan desteği ve yatay kaydırılan gemi kartları kullanır.
 - Yıldız alanı ekran çözünürlüğüne göre ölçeklenir; piksel oranı, kare hızı, yıldız ve bot sayısı mobilde sınırlandırılır.
+- Yerel ağdaki HTTP oturumlarında `crypto.randomUUID()` bulunmasa bile oyun uyumlu bir yerel kimlik üreticisine geri döner.
+
+### Ses ve müzik
+
+Üst çubuktaki **Sesi Aç** düğmesine ilk kez dokununca efektler ve düşük yoğunluklu uzay müziği başlar. Safari, kullanıcı etkileşimi olmadan ses oynatılmasına izin vermediği için sayfa her yenilendiğinde bu ilk dokunuş gerekir. Müzik ayrı kapatılabilir ve genel ses seviyesi ayarlanabilir.
+
+Sesler harici dosya veya ağ isteği kullanmaz. Tıklama, filo dönüşü, başarı, uyarı, zafer ve yenilgi efektleri ile ambient müzik Web Audio API üzerinden çalışma anında özgün olarak üretilir. Müzik ve ses seviyesi tercihi oyun kaydından bağımsız olarak aynı tarayıcıda saklanır; sekme arka plana geçtiğinde ses askıya alınır.
 
 ### Kayıtlar
 
@@ -67,6 +74,7 @@ Koloni gemisi yalnızca boş ve savunmasız nötr gezegenleri kolonileştirir. K
 | Koloni seçimi, taşıma, casusluk, recycler, sefer | ✓ | — |
 | İttifak, mesajlaşma, savaş skoru, ticaret sözleşmesi | ✓ | — |
 | Officer ve unique gemiler | ✓ | — |
+| Prosedürel efekt ve ambient müzik | ✓ | — |
 | Local/JSON kayıt | ✓ | — |
 | Seed ile tekrarlanabilir galaksi | — | ✓ |
 
@@ -88,7 +96,7 @@ npm run test:web
 npm run test:cli
 ```
 
-Testler görev gidiş/dönüşleri, ganimet ve taşıma, kolonizasyon sınırı, oyuncu elenmesi, savaş kayıpları, ittifak puanı, iki taraflı ticaret, gemi önkoşulları, benzersiz koordinatlar, iPhone'a özgü statik performans kuralları ve kayıt migrasyonunu kapsar. GitHub Actions her push ve pull request'te aynı `npm test` komutunu çalıştırır.
+Testler görev gidiş/dönüşleri, ganimet ve taşıma, kolonizasyon sınırı, oyuncu elenmesi, savaş kayıpları, ittifak puanı, iki taraflı ticaret, gemi önkoşulları, benzersiz koordinatlar, iPhone'a özgü statik performans/ses kuralları ve kayıt migrasyonunu kapsar. GitHub Actions her push ve pull request'te aynı `npm test` komutunu çalıştırır.
 
 ## Bilinen sınırlar
 

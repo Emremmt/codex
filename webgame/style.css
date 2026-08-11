@@ -29,12 +29,18 @@ button:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
 button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(116, 211, 255, 0.5); outline-offset: 2px; }
 textarea { width: 100%; min-height: 120px; resize: vertical; background: #0e2042; color: var(--text); border: 1px solid #406aa6; border-radius: 9px; padding: 10px; }
 select, input { max-width: 100%; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 #starfield { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100dvh; pointer-events: none; }
 .hud { position: relative; z-index: 1; max-width: 2560px; margin: 0 auto; padding: max(16px, var(--safe-top)) max(16px, var(--safe-right)) calc(16px + var(--safe-bottom)) max(16px, var(--safe-left)); }
 header { position: sticky; top: 8px; z-index: 4; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; background: rgba(4, 8, 21, 0.88); border: 1px solid rgba(64, 106, 166, 0.7); border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 h1 { margin: 0; color: var(--accent); font-size: clamp(1.05rem, 2vw, 1.45rem); line-height: 1.2; text-shadow: 0 0 10px #35b5ff; }
 h2 { margin: 0 0 10px; font-size: 1.05rem; color: #b6dbff; }
+.header-status { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 0; }
+.audio-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
+.audio-controls button { min-height: 34px; margin: 0; padding: 5px 8px; font-size: 0.78rem; }
+.volume-control { display: flex; align-items: center; min-height: 34px; gap: 6px; padding: 0 7px; color: var(--muted); border: 1px solid #31538a; border-radius: 9px; font-size: 0.72rem; }
+.volume-control input { width: 92px; min-height: 32px; margin: 0; padding: 0; background: transparent; border: 0; accent-color: var(--accent); }
 
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .panel { min-width: 0; overflow: clip; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: inset 0 0 25px rgba(53, 92, 151, 0.15), 0 10px 28px rgba(0, 0, 0, 0.14); content-visibility: auto; contain-intrinsic-size: auto 360px; scroll-margin-top: 88px; }
@@ -84,6 +90,11 @@ pre { max-height: 240px; overflow: auto; -webkit-overflow-scrolling: touch; whit
   .hud { padding: max(8px, var(--safe-top)) max(10px, var(--safe-right)) 16px max(10px, var(--safe-left)); }
   header { top: max(6px, var(--safe-top)); align-items: flex-start; flex-direction: column; gap: 4px; margin-bottom: 10px; padding: 10px 12px; }
   header #meta { color: var(--muted); font-size: 0.78rem; }
+  .header-status { width: 100%; align-items: stretch; }
+  .audio-controls { justify-content: flex-start; flex-wrap: nowrap; width: 100%; }
+  .audio-controls button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 4px; font-size: 0.72rem; }
+  .volume-control { flex: 0 1 110px; min-width: 90px; min-height: 44px; padding: 0 6px; }
+  .volume-control input { width: 100%; min-width: 55px; }
   h1 { font-size: 1.05rem; }
   .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .panel, .panel.wide { grid-column: span 1; padding: 12px; border-radius: 13px; scroll-margin-top: calc(92px + var(--safe-top)); }
@@ -104,6 +115,7 @@ pre { max-height: 240px; overflow: auto; -webkit-overflow-scrolling: touch; whit
 @media (max-width: 430px) {
   .item button { width: 100%; }
   .game-over button { width: 100%; }
+  .volume-control span { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -85,3 +85,16 @@ test("invalid save structures are rejected before replacing live state", () => {
   assert.throws(() => game.restoreState(duplicate), /benzersiz değil/);
   assert.equal(game.state.turn, originalTurn);
 });
+
+test("imported save identifiers cannot inject markup into rendered attributes", () => {
+  game.initGame(2);
+  const save = snapshot();
+  const unsafeId = `planet' autofocus onfocus='alert(1)`;
+  save.planets[1].id = unsafeId;
+
+  game.restoreState(save);
+  const restored = game.state.planets[1];
+
+  assert.notEqual(restored.id, unsafeId);
+  assert.match(restored.id, /^[0-9a-f-]{36}$/i);
+});

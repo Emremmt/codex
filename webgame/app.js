@@ -1,5 +1,6 @@
 const RES = ["metal", "crystal", "deuterium"];
 const SAVE_VERSION = 2;
+const AUDIO_STORAGE_KEY = "nova_dominion_audio";
 
 const BUILDINGS = {
   metalMine: { n: "Metal Madeni", b: { metal: 60, crystal: 15, deuterium: 0 }, f: 1.5 },
@@ -80,11 +81,34 @@ const state = {
   realtime: { startedAt: Date.now() },
 };
 
+const audioSettings = { music: true, volume: 0.32 };
+const audioRuntime = {
+  context: null,
+  master: null,
+  fx: null,
+  music: null,
+  filter: null,
+  timer: null,
+  active: false,
+  step: 0,
+};
+
 const r = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const resCost = (base, f, lv) => Object.fromEntries(RES.map(x => [x, Math.floor(base[x] * Math.pow(f, lv))]));
 const can = (pool, c) => RES.every(k => (pool[k] || 0) >= (c[k] || 0));
 function pay(pool, c) { if (!can(pool, c)) return false; RES.forEach(k => pool[k] -= c[k] || 0); return true; }
+
+function makeId(random = (typeof globalThis !== "undefined" ? globalThis.crypto : null)) {
+  if (typeof random?.randomUUID === "function") return random.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (typeof random?.getRandomValues === "function") random.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
 
 function mkEmpire(id, bot = false) {
   return {
@@ -100,7 +124,7 @@ function mkEmpire(id, bot = false) {
 
 function mkPlanet(name, ownerId, neutral = false) {
   return {
-    id: crypto.randomUUID(),
+    id: makeId(),
     name,
     ownerId,
     coords: [r(1, 9), r(1, 499), r(1, 15)],
@@ -182,7 +206,7 @@ function createBotAlliances(botCount) {
       .filter(e => e.isBot && e.id >= first && e.id < first + groupSize)
       .map(e => e.id);
     if (members.length < 2) continue;
-    const alliance = { id: crypto.randomUUID(), name: names[group % names.length], members };
+    const alliance = { id: makeId(), name: names[group % names.length], members };
     state.alliances.push(alliance);
     members.forEach(id => { emp(id).allianceId = alliance.id; });
     group++;
@@ -355,7 +379,7 @@ function launchMission(type, fromId, toId, ownerId, now = Date.now(), options = 
   const eta = state.turn + travelTurns(from, to, ownerId);
   const durationSec = travelTurns(from, to, ownerId) * 25;
   state.missions.push({
-    id: crypto.randomUUID(),
+    id: makeId(),
     type,
     ownerId,
     fromId,
@@ -443,6 +467,9 @@ function resolveCombat(attackerId, target, fleet, random = Math.random) {
     if (!target.moon && destroyedPower >= 5_000 && random() < 0.12) target.moon = true;
   }
 
+  if (attackerId === 0) playEffect(win ? "victory" : "defeat");
+  else if (defenderOwnerId === 0) playEffect(win ? "defeat" : "victory");
+
   return {
     win,
     loot,
@@ -498,6 +525,7 @@ function finishMissionReturn(m) {
   Object.keys(m.fleet).forEach(k => { home.ships[k] = (home.ships[k] || 0) + (m.fleet[k] || 0); });
   RES.forEach(k => { home.resources[k] += m.cargo?.[k] || 0; });
   m.done = true;
+  if (m.ownerId === 0) playEffect("arrival");
   state.log.unshift(`[T${state.turn}] Filo ${home.name} gezegenine geri döndü.`);
   reportMission(
     `Dönüş Raporu (${m.type})`,
@@ -719,7 +747,7 @@ function createAlliance() {
   if (e.allianceId) return log("Zaten ittifaktasın.");
   const name = String(prompt("İttifak adı?", "NovaGuard") || "").trim().slice(0, 32);
   if (!name) return;
-  const a = { id: crypto.randomUUID(), name, members: [0] };
+  const a = { id: makeId(), name, members: [0] };
   state.alliances.push(a);
   e.allianceId = a.id;
   log(`İttifak kuruldu: ${name}`);
@@ -767,7 +795,7 @@ function declareAllianceWar(targetAllianceId = null) {
   const exists = activeWarBetween(me.allianceId, targetId);
   if (exists) return log("Bu ittifakla zaten savaş var.");
   state.allianceWars.push({
-    id: crypto.randomUUID(),
+    id: makeId(),
     a1: me.allianceId,
     a2: targetId,
     startedTurn: state.turn,
@@ -794,7 +822,7 @@ function createTradeContract(botIdValue = null) {
   if (activeWarBetween(emp(0).allianceId, bot.allianceId)) return log("Savaşta olduğun ittifakla ticaret yapamazsın.");
   if (state.tradeContracts.some(c => c.active && c.with === botId && c.playerPlanetId === playerPlanet.id)) return log("Bu gezegenin aynı botla aktif sözleşmesi zaten var.");
   const c = {
-    id: crypto.randomUUID(),
+    id: makeId(),
     with: botId,
     playerPlanetId: playerPlanet.id,
     partnerPlanetId: partnerPlanet.id,
@@ -879,6 +907,7 @@ function updateAllianceWarScores() {
 function saveGame() {
   localStorage.setItem("nova_dominion_save", JSON.stringify(state));
   log("Oyun local storage'a kaydedildi.");
+  playEffect("success");
   render();
 }
 
@@ -903,7 +932,7 @@ function cleanCountMap(source, definitions, fallback = 0) {
 
 function cleanId(value) {
   const id = typeof value === "string" ? value.trim().slice(0, 100) : "";
-  return id || crypto.randomUUID();
+  return /^[a-zA-Z0-9_-]+$/.test(id) ? id : makeId();
 }
 
 function normalizeLoadedState() {
@@ -1043,6 +1072,7 @@ function loadGame() {
     const parsed = JSON.parse(raw);
     restoreState(parsed);
     log("Kayıt yüklendi.");
+    playEffect("success");
     render();
   } catch {
     log("Kayıt yüklenemedi (bozuk veri).");
@@ -1061,6 +1091,7 @@ function importSave() {
     const parsed = JSON.parse(raw);
     restoreState(parsed);
     log("Save verisi içe aktarıldı.");
+    playEffect("success");
     render();
   } catch {
     log("JSON veya kayıt şeması hatalı.");
@@ -1103,6 +1134,7 @@ function colonize(sourceId, targetId) {
   target.ownerId = 0;
   state.activePlanetId = target.id;
   log(`${target.name} kolonize edildi.`);
+  playEffect("success");
   render();
   return true;
 }
@@ -1130,6 +1162,7 @@ function expedition() {
   } else {
     log("Sefer sakin geçti.");
   }
+  playEffect(x < 0.5 ? "success" : (x < 0.64 ? "warning" : "arrival"));
   render();
   return true;
 }
@@ -1141,6 +1174,257 @@ function log(s) {
     const battleLog = document.getElementById("battleLog");
     if (battleLog) battleLog.textContent = state.log.join("\n");
   }
+}
+
+function normalizeAudioSettings(value = {}) {
+  const volume = Number(value?.volume);
+  return {
+    music: value?.music !== false,
+    volume: Number.isFinite(volume) ? clamp(volume, 0.05, 0.7) : 0.32,
+  };
+}
+
+function loadAudioSettings() {
+  if (typeof localStorage === "undefined") return audioSettings;
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUDIO_STORAGE_KEY) || "null");
+    Object.assign(audioSettings, normalizeAudioSettings(saved || audioSettings));
+  } catch {
+    Object.assign(audioSettings, normalizeAudioSettings());
+  }
+  return audioSettings;
+}
+
+function persistAudioSettings() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(audioSettings));
+  } catch {
+    // Ses tercihleri oyunun çalışmasını engellememeli.
+  }
+}
+
+function updateAudioControls(message = "") {
+  if (typeof document === "undefined") return;
+  const audioToggle = document.getElementById("audioToggle");
+  const musicToggle = document.getElementById("musicToggle");
+  const volumeControl = document.getElementById("volumeControl");
+  const status = document.getElementById("audioStatus");
+  if (!audioToggle || !musicToggle || !volumeControl || !status) return;
+
+  audioToggle.textContent = audioRuntime.active ? "🔊 Ses Açık" : "🔇 Sesi Aç";
+  audioToggle.setAttribute("aria-pressed", String(audioRuntime.active));
+  musicToggle.textContent = audioSettings.music ? "♫ Müzik Açık" : "♫ Müzik Kapalı";
+  musicToggle.setAttribute("aria-pressed", String(audioSettings.music));
+  musicToggle.disabled = !audioRuntime.active;
+  volumeControl.value = String(audioSettings.volume);
+  status.textContent = message || (audioRuntime.active
+    ? `Ses açık, müzik ${audioSettings.music ? "açık" : "kapalı"}.`
+    : "Safari için sesi bir dokunuşla başlat.");
+}
+
+function ensureAudioRuntime() {
+  if (audioRuntime.context) return true;
+  if (typeof window === "undefined") return false;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return false;
+
+  try {
+    const context = new AudioContextClass();
+    const master = context.createGain();
+    const fx = context.createGain();
+    const music = context.createGain();
+    const filter = context.createBiquadFilter();
+    master.gain.value = audioSettings.volume;
+    fx.gain.value = 0.46;
+    music.gain.value = 0;
+    filter.type = "lowpass";
+    filter.frequency.value = 1_250;
+    filter.Q.value = 0.55;
+    fx.connect(master);
+    filter.connect(music);
+    music.connect(master);
+    master.connect(context.destination);
+    Object.assign(audioRuntime, { context, master, fx, music, filter });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function setAudioBusLevels() {
+  const { context, master, fx, music } = audioRuntime;
+  if (!context || !master || !fx || !music) return;
+  const now = context.currentTime;
+  master.gain.cancelScheduledValues(now);
+  music.gain.cancelScheduledValues(now);
+  master.gain.setTargetAtTime(audioSettings.volume, now, 0.03);
+  fx.gain.setTargetAtTime(0.46, now, 0.03);
+  music.gain.setTargetAtTime(audioRuntime.active && audioSettings.music ? 0.3 : 0, now, 0.08);
+}
+
+function playAudioVoice({ frequency, endFrequency = frequency, start, duration, gain, type = "sine", destination, attack = 0.02 }) {
+  const context = audioRuntime.context;
+  if (!context || !destination || context.state !== "running") return;
+  const oscillator = context.createOscillator();
+  const envelope = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(Math.max(20, frequency), start);
+  oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), start + duration);
+  envelope.gain.setValueAtTime(0.0001, start);
+  envelope.gain.linearRampToValueAtTime(gain, start + Math.min(attack, duration * 0.4));
+  envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(envelope);
+  envelope.connect(destination);
+  oscillator.onended = () => {
+    oscillator.disconnect();
+    envelope.disconnect();
+  };
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.03);
+}
+
+function playEffect(name = "click") {
+  const context = audioRuntime.context;
+  if (!audioRuntime.active || !context || context.state !== "running") return false;
+  const patterns = {
+    click: [{ frequency: 360, endFrequency: 470, duration: 0.055, gain: 0.09, type: "sine" }],
+    success: [
+      { frequency: 523.25, duration: 0.15, gain: 0.12, type: "triangle" },
+      { frequency: 659.25, duration: 0.18, gain: 0.1, type: "triangle", offset: 0.08 },
+    ],
+    arrival: [
+      { frequency: 330, endFrequency: 660, duration: 0.25, gain: 0.09, type: "sine" },
+      { frequency: 880, duration: 0.12, gain: 0.06, type: "triangle", offset: 0.18 },
+    ],
+    victory: [
+      { frequency: 261.63, duration: 0.42, gain: 0.12, type: "triangle" },
+      { frequency: 329.63, duration: 0.42, gain: 0.1, type: "triangle", offset: 0.07 },
+      { frequency: 392, duration: 0.52, gain: 0.09, type: "triangle", offset: 0.14 },
+    ],
+    defeat: [
+      { frequency: 220, endFrequency: 110, duration: 0.52, gain: 0.13, type: "sawtooth" },
+      { frequency: 146.83, endFrequency: 73.42, duration: 0.58, gain: 0.08, type: "sine", offset: 0.08 },
+    ],
+    warning: [{ frequency: 185, endFrequency: 130, duration: 0.28, gain: 0.1, type: "square" }],
+  };
+  const now = context.currentTime + 0.01;
+  (patterns[name] || patterns.click).forEach(note => playAudioVoice({
+    ...note,
+    start: now + (note.offset || 0),
+    destination: audioRuntime.fx,
+  }));
+  return true;
+}
+
+function playMusicStep() {
+  const context = audioRuntime.context;
+  if (!audioRuntime.active || !audioSettings.music || !context || context.state !== "running") return;
+  const progression = [
+    [110, 164.81, 220],
+    [98, 146.83, 196],
+    [130.81, 196, 261.63],
+    [87.31, 130.81, 174.61],
+  ];
+  const chord = progression[audioRuntime.step % progression.length];
+  const now = context.currentTime + 0.03;
+  playAudioVoice({ frequency: chord[0], start: now, duration: 3.2, gain: 0.14, type: "sine", destination: audioRuntime.filter, attack: 0.7 });
+  playAudioVoice({ frequency: chord[1], start: now + 0.16, duration: 2.5, gain: 0.055, type: "triangle", destination: audioRuntime.filter, attack: 0.5 });
+  playAudioVoice({ frequency: chord[2], start: now + 0.58, duration: 1.2, gain: 0.035, type: "sine", destination: audioRuntime.filter, attack: 0.2 });
+  audioRuntime.step++;
+}
+
+function stopMusic() {
+  if (audioRuntime.timer) clearInterval(audioRuntime.timer);
+  audioRuntime.timer = null;
+  setAudioBusLevels();
+}
+
+function startMusic() {
+  if (audioRuntime.timer) clearInterval(audioRuntime.timer);
+  audioRuntime.timer = null;
+  if (!audioRuntime.active || !audioSettings.music || audioRuntime.context?.state !== "running") {
+    setAudioBusLevels();
+    return;
+  }
+  setAudioBusLevels();
+  playMusicStep();
+  audioRuntime.timer = setInterval(playMusicStep, 1_800);
+}
+
+async function toggleAudio() {
+  if (audioRuntime.active) {
+    audioRuntime.active = false;
+    stopMusic();
+    try { await audioRuntime.context?.suspend(); } catch { /* no-op */ }
+    updateAudioControls("Ses kapatıldı.");
+    return false;
+  }
+
+  if (!ensureAudioRuntime()) {
+    updateAudioControls("Bu tarayıcı Web Audio API desteği sunmuyor.");
+    return false;
+  }
+  try {
+    await audioRuntime.context.resume();
+  } catch {
+    updateAudioControls("Ses başlatılamadı; Safari'de düğmeye yeniden dokun.");
+    return false;
+  }
+  audioRuntime.active = audioRuntime.context.state === "running";
+  if (!audioRuntime.active) {
+    updateAudioControls("Ses başlatılamadı; Safari'de düğmeye yeniden dokun.");
+    return false;
+  }
+  startMusic();
+  playEffect("success");
+  updateAudioControls();
+  return true;
+}
+
+function toggleMusic() {
+  if (!audioRuntime.active) return false;
+  audioSettings.music = !audioSettings.music;
+  persistAudioSettings();
+  if (audioSettings.music) startMusic();
+  else stopMusic();
+  playEffect(audioSettings.music ? "success" : "click");
+  updateAudioControls();
+  return audioSettings.music;
+}
+
+function setAudioVolume(value) {
+  Object.assign(audioSettings, normalizeAudioSettings({ ...audioSettings, volume: value }));
+  persistAudioSettings();
+  setAudioBusLevels();
+  updateAudioControls();
+  return audioSettings.volume;
+}
+
+function initAudioControls() {
+  loadAudioSettings();
+  updateAudioControls();
+  document.getElementById("audioToggle").onclick = () => { void toggleAudio(); };
+  document.getElementById("musicToggle").onclick = toggleMusic;
+  document.getElementById("volumeControl").oninput = event => setAudioVolume(event.target.value);
+  document.addEventListener("click", event => {
+    const button = event.target.closest?.("button");
+    if (!button || button.id === "audioToggle" || button.id === "musicToggle") return;
+    playEffect("click");
+  }, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!audioRuntime.active || !audioRuntime.context) return;
+    if (document.hidden) {
+      stopMusic();
+      void Promise.resolve(audioRuntime.context.suspend()).catch(() => {});
+    } else {
+      void Promise.resolve(audioRuntime.context.resume()).then(startMusic).catch(() => {
+        audioRuntime.active = false;
+        stopMusic();
+        updateAudioControls("Sesi sürdürmek için Ses düğmesine dokun.");
+      });
+    }
+  });
 }
 
 function formatCost(cost) {
@@ -1211,7 +1495,7 @@ function refreshMissionTargets() {
   tgt.innerHTML = targets.map(x => {
     const owner = x.ownerId === -1 ? "Nötr" : (emp(x.ownerId)?.name || "Bilinmiyor");
     const eta = source ? travelTurns(source, x, 0) : 0;
-    return `<option value='${x.id}'>${x.name} [${x.coords.join(":")}] · ${owner} · Güç ${Math.floor(power(x))} · ${eta} tur</option>`;
+    return `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} [${x.coords.join(":")}] · ${escapeHtml(owner)} · Güç ${Math.floor(power(x))} · ${eta} tur</option>`;
   }).join("") || "<option value=''>Uygun hedef yok</option>";
   if (targets.some(x => x.id === previous)) tgt.value = previous;
   document.getElementById("targetSummary").textContent = `${targets.length}/${matched.length} hedef gösteriliyor${matched.length > 80 ? " · aramayla daralt" : ""}`;
@@ -1238,7 +1522,7 @@ function renderMissionPanel(now = Date.now()) {
     const deadline = m.phase === "returning" ? m.returnEtaMs : m.etaMs;
     const remaining = Number.isFinite(deadline) ? formatCountdown(deadline - now) : "tur bekleniyor";
     const phase = m.phase === "returning" ? "Dönüş" : "Gidiş";
-    return `<div class='item'><span>${m.type} · ${phase}</span><small>${remaining} · ${emp(m.ownerId)?.name || "Filo"}</small></div>`;
+    return `<div class='item'><span>${m.type} · ${phase}</span><small>${remaining} · ${escapeHtml(emp(m.ownerId)?.name || "Filo")}</small></div>`;
   }).join("") || "Görev yok";
 
   const next = state.missions
@@ -1266,13 +1550,13 @@ function render() {
   gameOver.hidden = true;
   grid.inert = false;
 
-  document.getElementById("resources").innerHTML = `<div class='active-world'>Aktif: <strong>${p.name}</strong></div>` + RES.map(k => `<div class='item'><span>${k}</span><strong>${p.resources[k].toLocaleString("tr-TR")}</strong></div>`).join("");
+  document.getElementById("resources").innerHTML = `<div class='active-world'>Aktif: <strong>${escapeHtml(p.name)}</strong></div>` + RES.map(k => `<div class='item'><span>${k}</span><strong>${p.resources[k].toLocaleString("tr-TR")}</strong></div>`).join("");
   const planetList = document.getElementById("planets");
   planetList.innerHTML = "";
   planetsOf(0).forEach(x => {
     const row = document.createElement("div");
     row.className = `item planet-row${x.id === p.id ? " selected" : ""}`;
-    row.innerHTML = `<span>${x.name} [${x.coords.join(":")}] ${x.moon ? "🌙" : ""}<br><small>Güç ${Math.floor(power(x, 0))}</small></span><button type='button'>${x.id === p.id ? "Aktif" : "Yönet"}</button>`;
+    row.innerHTML = `<span>${escapeHtml(x.name)} [${x.coords.join(":")}] ${x.moon ? "🌙" : ""}<br><small>Güç ${Math.floor(power(x, 0))}</small></span><button type='button'>${x.id === p.id ? "Aktif" : "Yönet"}</button>`;
     row.querySelector("button").onclick = () => selectActivePlanet(x.id);
     planetList.appendChild(row);
   });
@@ -1308,37 +1592,37 @@ function render() {
 
   const src = document.getElementById("sourcePlanet");
   const previousSource = src.value;
-  src.innerHTML = planetsOf(0).map(x => `<option value='${x.id}'>${x.name} [${x.coords.join(":")}]</option>`).join("");
+  src.innerHTML = planetsOf(0).map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} [${x.coords.join(":")}]</option>`).join("");
   src.value = planetsOf(0).some(x => x.id === previousSource) ? previousSource : p.id;
   refreshMissionTargets();
 
   document.getElementById("messageTo").innerHTML = state.empires.filter(x => x.id !== 0 && planetsOf(x.id).length).slice(0, 80)
-    .map(x => `<option value='${x.id}'>${x.name}</option>`).join("");
+    .map(x => `<option value='${x.id}'>${escapeHtml(x.name)}</option>`).join("");
 
   const myAllianceId = me.allianceId;
   document.getElementById("warTargetAlliance").innerHTML = state.alliances
     .filter(a => a.id !== myAllianceId)
-    .map(a => `<option value='${a.id}'>${a.name}</option>`).join("") || "<option value=''>Rakip ittifak yok</option>";
+    .map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("") || "<option value=''>Rakip ittifak yok</option>";
 
   document.getElementById("contractBot").innerHTML = state.empires.filter(x => x.isBot && planetsOf(x.id).length).slice(0, 80)
-    .map(x => `<option value='${x.id}'>${x.name}</option>`).join("");
+    .map(x => `<option value='${x.id}'>${escapeHtml(x.name)}</option>`).join("");
 
   document.getElementById("wars").innerHTML = state.allianceWars.map(w => {
     const a1 = state.alliances.find(a => a.id === w.a1)?.name || "A1";
     const a2 = state.alliances.find(a => a.id === w.a2)?.name || "A2";
     const status = w.status === "ended" ? "Bitti" : `Hedef ${w.targetScore || 100}`;
-    return `<div class='item'><span>${a1} vs ${a2}<br><small>${status} · ${w.battles?.length || 0} çatışma</small></span><strong>${w.score1} - ${w.score2}</strong></div>`;
+    return `<div class='item'><span>${escapeHtml(a1)} vs ${escapeHtml(a2)}<br><small>${status} · ${w.battles?.length || 0} çatışma</small></span><strong>${w.score1} - ${w.score2}</strong></div>`;
   }).join("") || "Savaş kaydı yok";
 
   document.getElementById("contracts").innerHTML = state.tradeContracts.map(c =>
-    `<div class='item'><span>${emp(c.with)?.name || "Eski ortak"} · her ${c.everyTurns} tur<br><small>${c.active ? `Aktif · sonraki ${c.nextTurn}. tur · gecikme ${c.missedPayments || 0}/3` : "Pasif"}</small></span>${c.active ? `<button type='button' data-cancel-contract='${c.id}'>İptal</button>` : ""}</div>`
+    `<div class='item'><span>${escapeHtml(emp(c.with)?.name || "Eski ortak")} · her ${c.everyTurns} tur<br><small>${c.active ? `Aktif · sonraki ${c.nextTurn}. tur · gecikme ${c.missedPayments || 0}/3` : "Pasif"}</small></span>${c.active ? `<button type="button" data-cancel-contract="${escapeHtml(c.id)}">İptal</button>` : ""}</div>`
   ).join("") || "Sözleşme yok";
   document.querySelectorAll("[data-cancel-contract]").forEach(button => {
     button.onclick = () => cancelTradeContract(button.dataset.cancelContract);
   });
 
   document.getElementById("reports").innerHTML = state.missionReports.slice(0, 30).map(rp =>
-    `<div class='item'><span>T${rp.turn} ${rp.title}</span><small>${rp.detail}</small></div>`
+    `<div class='item'><span>T${rp.turn} ${escapeHtml(rp.title)}</span><small>${escapeHtml(rp.detail)}</small></div>`
   ).join("") || "Rapor yok";
 
   document.getElementById("battleLog").textContent = state.log.join("\n");
@@ -1419,6 +1703,7 @@ function boot() {
   const requested = Number(prompt(`Bot sayısı (20-${maxBots})`, String(fallbackBots)) || fallbackBots);
   const bots = Number.isFinite(requested) ? clamp(Math.floor(requested), 20, maxBots) : fallbackBots;
   initGame(bots);
+  initAudioControls();
 
   document.getElementById("nextTurn").onclick = nextTurn;
   document.getElementById("launchMissionBtn").onclick = launchFromUI;
@@ -1449,6 +1734,7 @@ function boot() {
 
 const NOVA_TEST_API = {
   state,
+  makeId,
   initGame,
   activePlanet,
   selectActivePlanet,
@@ -1481,6 +1767,11 @@ const NOVA_TEST_API = {
   cancelTradeContract,
   updateAllianceWarScores,
   restoreState,
+  normalizeAudioSettings,
+  setAudioVolume,
+  toggleAudio,
+  toggleMusic,
+  playEffect,
   power,
 };
 

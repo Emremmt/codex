@@ -13,7 +13,18 @@
   <main class="hud">
     <header>
       <h1>✦ Nova Dominion // 2K Command Grid ✦</h1>
-      <div id="meta"></div>
+      <div class="header-status">
+        <div id="meta"></div>
+        <div class="audio-controls" role="group" aria-label="Ses ve müzik kontrolleri">
+          <button id="audioToggle" type="button" aria-pressed="false">🔇 Sesi Aç</button>
+          <button id="musicToggle" type="button" aria-pressed="true" disabled>♫ Müzik Açık</button>
+          <label class="volume-control" for="volumeControl">
+            <span aria-hidden="true">Ses</span>
+            <input id="volumeControl" type="range" min="0.05" max="0.7" step="0.05" value="0.32" aria-label="Ses seviyesi" />
+          </label>
+          <span id="audioStatus" class="sr-only" aria-live="polite">Safari için sesi bir dokunuşla başlat.</span>
+        </div>
+      </div>
     </header>
 
     <section id="gameOver" class="game-over" role="alert" hidden>
