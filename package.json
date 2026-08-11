@@ -1,0 +1,19 @@
+{
+  "name": "nova-dominion-offline",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Offline browser and terminal space-strategy game",
+  "scripts": {
+    "start": "npm run serve",
+    "serve": "python3 -m http.server 8000 --directory webgame",
+    "cli": "python3 ogame_offline.py",
+    "check": "node --check webgame/app.js && python3 -m py_compile ogame_offline.py",
+    "test:web": "node --test webgame/tests/*.test.js",
+    "test:cli": "python3 -m unittest discover -v",
+    "test": "npm run check && npm run test:web && npm run test:cli"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

@@ -1,0 +1,6 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 256'>
+<defs><linearGradient id='g' x1='0' x2='1'><stop stop-color='#78d9ff'/><stop offset='1' stop-color='#2c4cbe'/></linearGradient></defs>
+<rect width='512' height='256' fill='#081024'/>
+<polygon points='30,128 210,70 420,95 500,128 420,161 210,186' fill='url(#g)' stroke='#a8ecff' stroke-width='4'/>
+<circle cx='250' cy='128' r='24' fill='#c8f5ff'/><rect x='85' y='114' width='40' height='28' fill='#9ce4ff'/>
+</svg>
