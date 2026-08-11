@@ -1,4 +1,5 @@
 const RES = ["metal", "crystal", "deuterium"];
+const SAVE_VERSION = 2;
 
 const BUILDINGS = {
   metalMine: { n: "Metal Madeni", b: { metal: 60, crystal: 15, deuterium: 0 }, f: 1.5 },
@@ -62,6 +63,7 @@ const UNIT_ART = {
 };
 
 const state = {
+  version: SAVE_VERSION,
   turn: 1,
   activePlanetId: null,
   lastExpeditionTurn: -1,
@@ -115,6 +117,7 @@ function mkPlanet(name, ownerId, neutral = false) {
 }
 
 function initGame(botCount = 80) {
+  state.version = SAVE_VERSION;
   state.turn = 1;
   state.activePlanetId = null;
   state.lastExpeditionTurn = -1;
@@ -879,6 +882,30 @@ function saveGame() {
   render();
 }
 
+function finiteInt(value, fallback = 0, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(Math.floor(number), min, max) : fallback;
+}
+
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(number, 0, Number.MAX_SAFE_INTEGER) : null;
+}
+
+function cleanResourcePool(pool) {
+  return Object.fromEntries(RES.map(k => [k, finiteInt(pool?.[k], 0, 0, 1_000_000_000_000_000)]));
+}
+
+function cleanCountMap(source, definitions, fallback = 0) {
+  return Object.fromEntries(Object.keys(definitions).map(k => [k, finiteInt(source?.[k], fallback, 0, 1_000_000_000)]));
+}
+
+function cleanId(value) {
+  const id = typeof value === "string" ? value.trim().slice(0, 100) : "";
+  return id || crypto.randomUUID();
+}
+
 function normalizeLoadedState() {
   state.activePlanetId = state.planets.some(p => p.id === state.activePlanetId && p.ownerId === 0)
     ? state.activePlanetId
@@ -886,13 +913,135 @@ function normalizeLoadedState() {
   if (!Number.isFinite(state.lastExpeditionTurn)) state.lastExpeditionTurn = -1;
 }
 
+function restoreState(parsed) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.empires) || !Array.isArray(parsed.planets)) {
+    throw new Error("Geçersiz kayıt şeması");
+  }
+
+  const empires = parsed.empires.slice(0, 501).map(raw => ({
+    id: finiteInt(raw?.id, -1, -1, 10_000),
+    name: String(raw?.name || "İmparatorluk").slice(0, 64),
+    isBot: Boolean(raw?.isBot),
+    research: cleanCountMap(raw?.research, RESEARCH),
+    uniqueBuilt: Object.fromEntries(Object.keys(SHIPS).filter(k => SHIPS[k].unique).map(k => [k, Boolean(raw?.uniqueBuilt?.[k])])),
+    officers: Object.fromEntries(Object.keys(OFFICERS).map(k => [k, Boolean(raw?.officers?.[k])])),
+    allianceId: typeof raw?.allianceId === "string" ? raw.allianceId.slice(0, 100) : null,
+  })).filter((entry, index, list) => entry.id >= 0 && list.findIndex(other => other.id === entry.id) === index);
+  if (!empires.some(e => e.id === 0)) throw new Error("Oyuncu imparatorluğu eksik");
+
+  const planets = parsed.planets.slice(0, 2_000).map(raw => ({
+    id: cleanId(raw?.id),
+    name: String(raw?.name || "Adsız Gezegen").slice(0, 64),
+    ownerId: finiteInt(raw?.ownerId, -1, -1, 10_000),
+    coords: [
+      finiteInt(raw?.coords?.[0], 1, 1, 9),
+      finiteInt(raw?.coords?.[1], 1, 1, 499),
+      finiteInt(raw?.coords?.[2], 1, 1, 15),
+    ],
+    moon: Boolean(raw?.moon),
+    resources: cleanResourcePool(raw?.resources),
+    b: cleanCountMap(raw?.b, BUILDINGS, 1),
+    ships: cleanCountMap(raw?.ships, SHIPS),
+    def: cleanCountMap(raw?.def, DEF),
+  }));
+  if (!planets.length) throw new Error("Gezegen verisi eksik");
+  if (new Set(planets.map(p => p.id)).size !== planets.length) throw new Error("Gezegen kimlikleri benzersiz değil");
+
+  const empireIds = new Set(empires.map(e => e.id));
+  planets.forEach(planet => {
+    if (planet.ownerId !== -1 && !empireIds.has(planet.ownerId)) planet.ownerId = -1;
+  });
+
+  const playerHomeId = planets.find(p => p.ownerId === 0)?.id || null;
+  const missionTypes = new Set(["attack", "espionage", "transport", "recycle"]);
+  const missions = (Array.isArray(parsed.missions) ? parsed.missions : []).slice(0, 500).filter(m => missionTypes.has(m?.type)).map(raw => ({
+    id: cleanId(raw.id),
+    type: raw.type,
+    ownerId: finiteInt(raw.ownerId, 0, 0, 10_000),
+    fromId: String(raw.fromId || "").slice(0, 100),
+    toId: String(raw.toId || "").slice(0, 100),
+    fleet: cleanCountMap(raw.fleet, SHIPS),
+    cargo: cleanResourcePool(raw.cargo),
+    phase: raw.phase === "returning" || finiteNumberOrNull(raw.returnEta) !== null ? "returning" : "outbound",
+    eta: finiteInt(raw.eta, 0, 0),
+    etaMs: finiteNumberOrNull(raw.etaMs),
+    returnEta: finiteNumberOrNull(raw.returnEta),
+    returnEtaMs: finiteNumberOrNull(raw.returnEtaMs),
+    done: Boolean(raw.done),
+  }));
+
+  const alliances = (Array.isArray(parsed.alliances) ? parsed.alliances : []).slice(0, 200).map(raw => ({
+    id: cleanId(raw?.id),
+    name: String(raw?.name || "İttifak").slice(0, 64),
+    members: [...new Set((Array.isArray(raw?.members) ? raw.members : []).map(id => finiteInt(id, -1, -1, 10_000)).filter(id => empireIds.has(id)))],
+  }));
+  const allianceWars = (Array.isArray(parsed.allianceWars) ? parsed.allianceWars : []).slice(0, 200).map(raw => ({
+    id: cleanId(raw?.id),
+    a1: String(raw?.a1 || "").slice(0, 100),
+    a2: String(raw?.a2 || "").slice(0, 100),
+    startedTurn: finiteInt(raw?.startedTurn, 1, 1),
+    endedTurn: finiteNumberOrNull(raw?.endedTurn),
+    score1: finiteInt(raw?.score1, 0),
+    score2: finiteInt(raw?.score2, 0),
+    targetScore: finiteInt(raw?.targetScore, 100, 10, 10_000),
+    status: raw?.status === "ended" ? "ended" : "active",
+    winnerAllianceId: typeof raw?.winnerAllianceId === "string" ? raw.winnerAllianceId.slice(0, 100) : null,
+    battles: (Array.isArray(raw?.battles) ? raw.battles : []).slice(0, 30),
+  }));
+
+  const tradeContracts = (Array.isArray(parsed.tradeContracts) ? parsed.tradeContracts : []).slice(0, 200).map(raw => {
+    const withId = finiteInt(raw?.with, 0, 0, 10_000);
+    return {
+      id: cleanId(raw?.id),
+      with: withId,
+      playerPlanetId: String(raw?.playerPlanetId || playerHomeId || "").slice(0, 100),
+      partnerPlanetId: String(raw?.partnerPlanetId || planets.find(p => p.ownerId === withId)?.id || "").slice(0, 100),
+      give: cleanResourcePool(raw?.give),
+      take: cleanResourcePool(raw?.take),
+      everyTurns: finiteInt(raw?.everyTurns, 3, 1, 100),
+      nextTurn: finiteInt(raw?.nextTurn, 1, 1),
+      active: Boolean(raw?.active),
+      missedPayments: finiteInt(raw?.missedPayments, 0, 0, 3),
+    };
+  });
+
+  state.version = SAVE_VERSION;
+  state.turn = finiteInt(parsed.turn, 1, 1);
+  state.activePlanetId = typeof parsed.activePlanetId === "string" ? parsed.activePlanetId : playerHomeId;
+  state.lastExpeditionTurn = finiteInt(parsed.lastExpeditionTurn, -1, -1);
+  state.empires = empires;
+  state.planets = planets;
+  state.missions = missions;
+  state.missionReports = (Array.isArray(parsed.missionReports) ? parsed.missionReports : []).slice(0, 80).map(raw => ({
+    turn: finiteInt(raw?.turn, state.turn, 1),
+    title: String(raw?.title || "Rapor").slice(0, 100),
+    detail: String(raw?.detail || "").slice(0, 500),
+  }));
+  state.market = {
+    metalToCrystal: clamp(finiteNumberOrNull(parsed.market?.metalToCrystal) ?? 1.4, 0.1, 1_000),
+    metalToDeut: clamp(finiteNumberOrNull(parsed.market?.metalToDeut) ?? 2.2, 0.1, 1_000),
+  };
+  state.alliances = alliances;
+  state.allianceWars = allianceWars;
+  state.tradeContracts = tradeContracts;
+  state.messages = (Array.isArray(parsed.messages) ? parsed.messages : []).slice(0, 100).map(raw => ({
+    from: finiteInt(raw?.from, 0, 0, 10_000),
+    to: finiteInt(raw?.to, 0, 0, 10_000),
+    content: String(raw?.content || "").slice(0, 240),
+    turn: finiteInt(raw?.turn, state.turn, 1),
+  }));
+  state.log = (Array.isArray(parsed.log) ? parsed.log : []).slice(0, 60).map(entry => String(entry).slice(0, 500));
+  state.realtime = { startedAt: finiteNumberOrNull(parsed.realtime?.startedAt) ?? Date.now() };
+  normalizeLoadedState();
+  return state;
+}
+
 function loadGame() {
   const raw = localStorage.getItem("nova_dominion_save");
   if (!raw) return log("Kayıt bulunamadı.");
   try {
     const parsed = JSON.parse(raw);
-    Object.assign(state, parsed);
-    normalizeLoadedState();
+    restoreState(parsed);
     log("Kayıt yüklendi.");
     render();
   } catch {
@@ -910,12 +1059,11 @@ function importSave() {
   if (!raw) return log("İçe aktarılacak veri yok.");
   try {
     const parsed = JSON.parse(raw);
-    Object.assign(state, parsed);
-    normalizeLoadedState();
+    restoreState(parsed);
     log("Save verisi içe aktarıldı.");
     render();
   } catch {
-    log("JSON hatalı.");
+    log("JSON veya kayıt şeması hatalı.");
   }
 }
 
@@ -1332,6 +1480,7 @@ const NOVA_TEST_API = {
   processTradeContracts,
   cancelTradeContract,
   updateAllianceWarScores,
+  restoreState,
   power,
 };
 
